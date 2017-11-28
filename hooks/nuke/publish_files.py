@@ -1,0 +1,302 @@
+# Copyright (c) 2017 Shotgun Software Inc.
+#
+# CONFIDENTIAL AND PROPRIETARY
+#
+# This work is provided "AS IS" and subject to the Shotgun Pipeline Toolkit
+# Source Code License included in this distribution package. See LICENSE.
+# By accessing, using, copying or modifying this work you indicate your
+# agreement to the Shotgun Pipeline Toolkit Source Code License. All rights
+# not expressly granted therein are reserved by Shotgun Software Inc.
+
+import os
+import pprint
+import nuke
+import sgtk
+
+HookBaseClass = sgtk.get_hook_baseclass()
+
+
+class NukePublishFilesPlugin(HookBaseClass):
+    """
+    Inherits from PublishFilesPlugin
+    """
+    def __init__(self, parent):
+        """
+        Construction
+        """
+        # call base init
+        super(NukePublishFilesPlugin, self).__init__(parent)
+        
+        # cache the review submission app
+        self.__write_node_app = self.parent.engine.apps.get("tk-nuke-writenode")
+
+    @property
+    def description(self):
+        """
+        Verbose, multi-line description of what the plugin does. This can
+        contain simple html for formatting.
+        """
+
+        desc = super(NukePublishFilesPlugin, self).description
+
+        return desc + "<br><br>" + """
+        After publishing, if a version number is detected in the file, the file
+        will automatically be saved to the next incremental version number.
+        For example, <code>filename.v001.ext</code> will be published and copied
+        to <code>filename.v002.ext</code>
+
+        If the next incremental version of the file already exists on disk, the
+        validation step will produce a warning, and a button will be provided in
+        the logging output which will allow saving the session to the next
+        available version number prior to publishing.
+
+        <br><br><i>NOTE: any amount of version number padding is supported.</i>
+        """
+
+    def accept(self, item):
+        """
+        Method called by the publisher to determine if an item is of any
+        interest to this plugin. Only items matching the filters defined via the
+        item_filters property will be presented to this method.
+
+        A publish task will be generated for each item accepted here. Returns a
+        dictionary with the following booleans:
+
+            - accepted: Indicates if the plugin is interested in this value at
+                all. Required.
+            - enabled: If True, the plugin will be enabled in the UI, otherwise
+                it will be disabled. Optional, True by default.
+            - visible: If True, the plugin will be visible in the UI, otherwise
+                it will be hidden. Optional, True by default.
+            - checked: If True, the plugin will be checked in the UI, otherwise
+                it will be unchecked. Optional, True by default.
+
+        :param item: Item to process
+
+        :returns: dictionary with boolean keys accepted, required and enabled
+        """
+
+        if item.type == "file.nuke":
+            if not item.properties["path"]:
+                # the session has not been saved before (no path determined).
+                # provide a save button. the session will need to be saved before
+                # validation will succeed.
+                self.logger.warn(
+                    "The Nuke script has not been saved.",
+                    extra=_get_save_as_action()
+                )
+
+        # Run the parent acceptance method
+        accept_data = super(NukePublishFilesPlugin, self).accept(item)
+        if not accept_data.get("accepted"):
+            return accept_data
+
+        # If this is a WriteTank node, override task settings from the node
+        node = item.properties.get("node")
+        if node and node.Class() == "WriteTank":
+            if not self.__write_node_app:
+                self.logger.error("Unable to process item '%s' without "
+                        "the tk-nuke_writenode app!" % item.name)
+                accept_data["enabled"] = False
+                accept_data["checked"] = False
+                return accept_data
+
+            accept_data["task_settings"] = dict(
+                publish_type          = self.__write_node_app.get_node_tank_type(node),
+                work_path_template    = self.__write_node_app.get_node_render_template(node).name,
+                publish_path_template = self.__write_node_app.get_node_publish_template(node).name
+            )
+
+        # return the accepted info
+        return accept_data
+
+
+    def validate(self, task_settings, item):
+        """
+        Validates the given item to check that it is ok to publish. Returns a
+        boolean to indicate validity.
+
+        :param task_settings: Dictionary of Settings. The keys are strings, matching
+            the keys returned in the settings property. The values are `Setting`
+            instances.
+        :param item: Item to process
+        :returns: True if item is valid, False otherwise.
+        """
+        publisher = self.parent
+        path = item.properties["path"]
+
+        if item.type == 'file.nuke':
+            if not path:
+                # the session still requires saving. provide a save button.
+                # validation fails.
+                self.logger.error(
+                    "The Nuke script has not been saved.",
+                    extra=_get_save_as_action()
+                )
+                return False
+
+            # if the file has a version number in it, see if the next version exists
+            next_version_path = publisher.util.get_next_version_path(path)
+            if next_version_path and os.path.exists(next_version_path):
+
+                # determine the next available version_number. just keep asking for
+                # the next one until we get one that doesn't exist.
+                while os.path.exists(next_version_path):
+                    next_version_path = publisher.util.get_next_version_path(
+                        next_version_path)
+
+                # now extract the version number of the next available to display
+                # to the user
+                version = publisher.util.get_version_number(next_version_path)
+
+                self.logger.error(
+                    "The next version of this file already exists on disk.",
+                    extra={
+                        "action_button": {
+                            "label": "Save to v%s" % (version,),
+                            "tooltip": "Save to the next available version number, "
+                                       "v%s" % (version,),
+                            "callback": lambda: _save_session(next_version_path)
+                        }
+                    }
+                )
+                return False
+
+        # If this is a WriteTank node, check to see if the node path is currently locked
+        node = item.properties.get("node")
+        if node and node.Class() == "WriteTank":
+            write_node_app = publisher.engine.apps.get("tk-nuke-writenode")
+
+            if write_node_app.is_node_render_path_locked(node):
+                # renders for the write node can't be published - trying to publish 
+                # will result in an error in the publish hook!
+                self.logger.error("The render path is currently locked and "
+                        "does not match the current Work Area.")
+                return False
+
+        return super(NukePublishFilesPlugin, self).validate(task_settings, item)
+
+
+    def publish(self, task_settings, item):
+        """
+        Executes the publish logic for the given item and settings.
+
+        :param task_settings: Dictionary of Settings. The keys are strings, matching
+            the keys returned in the settings property. The values are `Setting`
+            instances.
+        :param item: Item to process
+        """
+        path = item.properties["path"]
+
+        # ensure the session is saved
+        if item.type == 'file.nuke':
+            _save_session(sgtk.util.ShotgunPath.normalize(path))
+
+            # Store any file dependencies
+            item.properties["publish_dependencies"] = _get_script_dependencies()
+
+        super(NukePublishFilesPlugin, self).publish(task_settings, item)
+
+
+    def finalize(self, task_settings, item):
+        """
+        Execute the finalization pass. This pass executes once all the publish
+        tasks have completed, and can for example be used to version up files.
+
+        :param task_settings: Dictionary of Settings. The keys are strings, matching
+            the keys returned in the settings property. The values are `Setting`
+            instances.
+        :param item: Item to process
+        """
+        path = item.properties["path"]
+
+        super(NukePublishFilesPlugin, self).finalize(task_settings, item)
+
+        # insert the path into the properties
+        if item.type == 'file.nuke':
+            item.properties["next_version_path"] = self._bump_file_version(path)
+
+
+    def _bump_file_version(self, path):
+        """
+        Save the supplied path to the next version on disk.
+        """
+
+        publisher = self.parent
+        path = sgtk.util.ShotgunPath.normalize(path)
+        version_number = publisher.util.get_version_number(path)
+
+        if version_number is None:
+            self.logger.debug(
+                "No version number detected in the file path. "
+                "Skipping the bump file version step."
+            )
+            return None
+
+        self.logger.info("Incrementing session file version number...")
+
+        next_version_path = publisher.util.get_next_version_path(path)
+
+        # nothing to do if the next version path can't be determined or if it
+        # already exists.
+        if not next_version_path:
+            self.logger.warning("Could not determine the next version path.")
+            return None
+        elif os.path.exists(next_version_path):
+            self.logger.warning(
+                "The next version of the path already exists",
+                extra={
+                    "action_show_folder": {
+                        "path": next_version_path
+                    }
+                }
+            )
+            return None
+
+        # save the session to the new path
+        _save_session(next_version_path)
+        self.logger.info("Session saved as: %s" % (next_version_path,))
+
+        return next_version_path
+
+
+def _get_script_dependencies():
+    """
+    Find all dependencies for the current nuke script
+    """
+
+    # figure out all the inputs to the scene and pass them as dependency
+    # candidates
+    dependency_paths = []
+    for read_node in nuke.allNodes("Read"):
+        # make sure we have a file path and normalize it
+        # file knobs set to "" in Python will evaluate to None. This is
+        # different than if you set file to an empty string in the UI, which
+        # will evaluate to ""!
+        file_path = read_node.knob("file").evaluate()
+        if not file_path:
+            continue
+        file_path = sgtk.util.ShotgunPath.normalize(file_path)
+        dependency_paths.append(file_path)
+
+    return dependency_paths
+
+
+def _save_session(path):
+    """
+    Save the current session to the supplied path.
+    """
+    nuke.scriptSaveAs(path, True)
+
+
+def _get_save_as_action():
+    """
+    Simple helper for returning a log action dict for saving the session
+    """
+    return {
+        "action_button": {
+            "label": "Save As...",
+            "tooltip": "Save the current session",
+            "callback": nuke.scriptSaveAs
+        }
+    }

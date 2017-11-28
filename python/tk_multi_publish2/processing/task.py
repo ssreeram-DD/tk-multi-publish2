@@ -8,7 +8,6 @@
 # agreement to the Shotgun Pipeline Toolkit Source Code License. All rights
 # not expressly granted therein are reserved by Shotgun Software Inc.
 
-import copy
 import sgtk
 
 logger = sgtk.platform.get_logger(__name__)
@@ -22,17 +21,18 @@ class Task(object):
     on a particular collector item.
     """
 
-    def __init__(self, plugin, item, visible, enabled, checked):
+    def __init__(self, plugin, item, visible, enabled, checked, settings):
         """
         :param plugin: The plugin instance associated with this task
         :param item: The collector item associated with this task
         :param bool visible: Indicates that the task is visible
         :param bool enabled: Indicates that the task is enabled
         :param bool checked: Indicates that the task is checked
+        :param dict settings: Initial settings to use for task
         """
         self._plugin = plugin
         self._item = item
-        self._settings = copy.deepcopy(plugin.settings)
+        self._settings = settings or {}
         self._visible = visible
         self._enabled = enabled
         self._checked = checked
@@ -44,7 +44,7 @@ class Task(object):
         return "<Task: %s for %s >" % (self._plugin, self._item)
 
     @classmethod
-    def create_task(cls, plugin, item, is_visible, is_enabled, is_checked):
+    def create_task(cls, plugin, item, is_visible, is_enabled, is_checked, settings=None):
         """
         Factory method for new tasks.
 
@@ -53,9 +53,10 @@ class Task(object):
         :param is_visible: bool to indicate if this option should be shown
         :param is_enabled: bool to indicate if node is enabled (clickable)
         :param is_checked: bool to indicate if this node is checked
+        :param settings: dict of initial settings to use for task
         :return: Task instance
         """
-        task = Task(plugin, item, is_visible, is_enabled, is_checked)
+        task = Task(plugin, item, is_visible, is_enabled, is_checked, settings)
         plugin.add_task(task)
         item.add_task(task)
         logger.debug("Created %s" % task)
@@ -113,6 +114,11 @@ class Task(object):
         Dictionary of settings associated with this Task
         """
         return self._settings
+
+    @settings.setter
+    def settings(self, settings):
+        # setter for value
+        self._settings = settings
 
     def validate(self):
         """

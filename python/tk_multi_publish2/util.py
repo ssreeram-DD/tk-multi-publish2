@@ -139,6 +139,54 @@ def get_file_path_components(path):
     return file_info
 
 
+def get_frame_number(path):
+    """
+    Given a path with a frame number, return the frame number.
+
+    :param path: The input path with a frame number
+
+    :return: The frame number
+    """
+
+    # the logic for this method lives in a hook that can be overridden by
+    # clients. exposing the method here in the publish utils api prevents
+    # clients from having to call other hooks directly in their
+    # collector/publisher hook implementations.
+    publisher = sgtk.platform.current_bundle()
+    return publisher.execute_hook_method(
+        "path_info",
+        "get_frame_number",
+        path=path
+    )
+
+
+def get_path_for_frame(path, frame_num, frame_spec=None):
+    """
+    Given a path with a frame spec, return the expanded path where the frame
+    spec, such as ``{FRAME}`` or ``%04d`` or ``$F``, is replaced with a given 
+    frame number.
+
+    :param path: The input path with a frame number
+    :param frame_num: The frame number to replace the frame spec with.
+    :param frame_spec: The frame specification to be replaced.
+
+    :return: The full frame number path
+    """
+
+    # the logic for this method lives in a hook that can be overridden by
+    # clients. exposing the method here in the publish utils api prevents
+    # clients from having to call other hooks directly in their
+    # collector/publisher hook implementations.
+    publisher = sgtk.platform.current_bundle()
+    return publisher.execute_hook_method(
+        "path_info",
+        "get_path_for_frame",
+        path=path,
+        frame_num=frame_num,
+        frame_spec=frame_spec
+    )
+
+
 def get_frame_sequence_path(path, frame_spec=None):
     """
     Given a path with a frame number, return the sequence path where the frame
@@ -219,7 +267,7 @@ def get_frame_sequences(folder, extensions=None, frame_spec=None):
     )
 
 
-def get_publish_name(path, sequence=False):
+def get_publish_name(path):
     """
     Given a file path, return the display name to use for publishing.
 
@@ -233,8 +281,6 @@ def get_publish_name(path, sequence=False):
         out: my_file.jpg
 
     :param path: The path to a file, likely one to be published.
-    :param sequence: If True, treat the path as a sequence name and replace
-        the frame number with placeholder
 
     :return: A publish display name for the provided path.
     """
@@ -247,8 +293,7 @@ def get_publish_name(path, sequence=False):
     return publisher.execute_hook_method(
         "path_info",
         "get_publish_name",
-        path=path,
-        sequence=sequence
+        path=path
     )
 
 

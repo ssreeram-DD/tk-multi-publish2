@@ -189,6 +189,12 @@ class PluginManager(object):
                 accept_data = plugin.run_accept(item)
                 if accept_data.get("accepted"):
                     # this item was accepted by the plugin!
+
+                    # log the acceptance and display any extra info from the plugin
+                    plugin.logger.info(
+                        "Plugin: '%s' - Accepted %s" % (plugin.name, item.name),
+                        extra=accept_data.get("extra_info")
+                    )
                     # look for bools accepted/visible/enabled/checked
 
                     # TODO: Implement support for this!
@@ -201,7 +207,10 @@ class PluginManager(object):
                     # all things are enabled by default unless stated otherwise
                     is_enabled = accept_data.get("enabled", True)
 
-                    task = Task.create_task(plugin, item, is_visible, is_enabled, is_checked)
+                    # look to see if accept has returned any publish task settings
+                    settings = accept_data.get("task_settings", None)
+
+                    task = Task.create_task(plugin, item, is_visible, is_enabled, is_checked, settings)
                     self._tasks.append(task)
 
         return all_new_items

@@ -12,6 +12,7 @@ import traceback
 import sgtk
 from contextlib import contextmanager
 from sgtk.platform.qt import QtCore, QtGui
+from sgtk.platform.bundle import resolve_setting_value
 from .setting import Setting
 
 logger = sgtk.platform.get_logger(__name__)
@@ -32,19 +33,25 @@ class PluginBase(object):
         """
 
         # all plugins need a hook and a name
-        self._path = path
         self._configured_settings = settings
 
         self._bundle = sgtk.platform.current_bundle()
 
         # create an instance of the hook
-        self._hook_instance = self._bundle.create_hook_instance(self._path)
+        self._base_hook_path = ':'.join(('{self}/base.py', self._base_hook_path))
+
+        hook_path = ':'.join((self._base_hook_path, self._path))
+        self._hook_instance = self._bundle.create_hook_instance(hook_path)
 
         self._logger = logger
         self._settings = {}
 
         # kick things off
         self._validate_and_resolve_config()
+
+        # pass the settings dict to the hook
+        if hasattr(self._hook_instance.__class__, "settings"):
+            self._hook_instance.settings = self._settings
 
     def __repr__(self):
         """
@@ -60,11 +67,11 @@ class PluginBase(object):
         that can be accessed from the settings property.
         """
         try:
-            hook_settings_schema = self._hook_instance.settings
-        except AttributeError, e:
+            hook_settings_schema = self._hook_instance.settings_schema
+        except NotImplementedError, e:
             import traceback
             # property not defined by the hook
-            logger.debug("no settings property defined by hook")
+            logger.error("no settings schema property defined by hook: %s" % self._path)
             hook_settings_schema = {}
 
         # Settings schema will be in the form:
@@ -76,26 +83,34 @@ class PluginBase(object):
 
         for setting_name, setting_schema in hook_settings_schema.iteritems():
 
-            # if the setting exists in the configured environment, grab that
-            # value, validate it, and update the setting's value
-            if setting_name in self._configured_settings:
-                # this setting was provided by the config
-                value = self._configured_settings[setting_name]
-            else:
-                # no value specified in the actual configuration
-                value = setting_schema.get("default")
+            value = resolve_setting_value(
+                self._bundle.sgtk,
+                self._bundle._get_engine_name(),
+                setting_schema,
+                self._configured_settings,
+                setting_name,
+                None,
+                self._bundle
+            )
 
-            # TODO: validate and resolve the configured setting
+            # TODO: validate that all required settings are resolved
 
             setting = Setting(
                 setting_name,
                 data_type=setting_schema.get("type"),
-                default_value=setting_schema.get("default"),
+                default_value=setting_schema.get("default_value"),
                 description=setting_schema.get("description")
             )
             setting.value = value
 
             self._settings[setting_name] = setting
+
+    @property
+    def logger(self):
+        """
+        returns the plugin logger
+        """
+        return self._logger
 
     @property
     def settings(self):
@@ -122,10 +137,14 @@ class PublishPlugin(PluginBase):
         """
         # all plugins need a hook and a name
         self._name = name
+        self._path = path
 
         self._tasks = []
 
-        super(PublishPlugin, self).__init__(path, settings, logger)
+        self._base_hook_path = '{self}/publish.py'
+        hook_path = ':'.join((self._base_hook_path, self._path))
+
+        super(PublishPlugin, self).__init__(hook_path, settings, logger)
 
         self._icon_pixmap = self._load_plugin_icon()
 
@@ -284,7 +303,7 @@ class PublishPlugin(PluginBase):
         :returns: dictionary with boolean keys accepted/visible/enabled/checked
         """
         try:
-            return self._hook_instance.accept(self.settings, item)
+            return self._hook_instance.accept(item)
         except Exception:
             error_msg = traceback.format_exc()
             self._logger.error(
@@ -296,7 +315,7 @@ class PublishPlugin(PluginBase):
             # give qt a chance to do stuff
             QtCore.QCoreApplication.processEvents()
 
-    def run_validate(self, settings, item):
+    def run_validate(self, task_settings, item):
         """
         Executes the validation logic for this plugin instance.
 
@@ -306,7 +325,7 @@ class PublishPlugin(PluginBase):
         """
         status = False
         with self._handle_plugin_error(None, "Error Validating: %s"):
-            status = self._hook_instance.validate(settings, item)
+            status = self._hook_instance.validate(task_settings, item)
 
         # check that we are not trying to publish to a site level context
         if item.context.project is None:
@@ -320,7 +339,7 @@ class PublishPlugin(PluginBase):
 
         return status
 
-    def run_publish(self, settings, item):
+    def run_publish(self, task_settings, item):
         """
         Executes the publish logic for this plugin instance.
 
@@ -328,9 +347,9 @@ class PublishPlugin(PluginBase):
         :param item: Item to analyze
         """
         with self._handle_plugin_error("Publish complete!", "Error publishing: %s"):
-            self._hook_instance.publish(settings, item)
+            self._hook_instance.publish(task_settings, item)
 
-    def run_finalize(self, settings, item):
+    def run_finalize(self, task_settings, item):
         """
         Executes the finalize logic for this plugin instance.
 
@@ -338,7 +357,7 @@ class PublishPlugin(PluginBase):
         :param item: Item to analyze
         """
         with self._handle_plugin_error("Finalize complete!", "Error finalizing: %s"):
-            self._hook_instance.finalize(settings, item)
+            self._hook_instance.finalize(task_settings, item)
 
     @contextmanager
     def _handle_plugin_error(self, success_msg, error_msg):
@@ -377,6 +396,20 @@ class CollectorPlugin(PluginBase):
 
     Each collector object reflects an instance in the app configuration.
     """
+    def __init__(self, path, settings, logger):
+        """
+        :param name: Name to be used for this plugin instance
+        :param path: Path to publish plugin hook
+        :param settings: Dictionary of plugin-specific settings
+        :param logger: a logger object that will be used by the hook
+        """
+        # all collector plugins need a hook
+        self._path = path
+
+        self._base_hook_path = '{self}/collector.py'
+        hook_path = ':'.join((self._base_hook_path, self._path))
+
+        super(CollectorPlugin, self).__init__(hook_path, settings, logger)
 
     def run_process_current_session(self, item):
         """
@@ -387,15 +420,7 @@ class CollectorPlugin(PluginBase):
         :returns: None (item creation handles parenting)
         """
         try:
-            if hasattr(self._hook_instance.__class__, "settings"):
-                # this hook has a 'settings' property defined. it is expecting
-                # 'settings' to be passed to the processing method.
-                return self._hook_instance.process_current_session(
-                    self.settings, item)
-            else:
-                # the hook hasn't been updated to handle collector settings.
-                # call the method without a settings argument
-                return self._hook_instance.process_current_session(item)
+            return self._hook_instance.process_current_session(item)
         except Exception, e:
             error_msg = traceback.format_exc()
             logger.error(
@@ -413,15 +438,7 @@ class CollectorPlugin(PluginBase):
         :returns: None (item creation handles parenting)
         """
         try:
-            if hasattr(self._hook_instance.__class__, "settings"):
-                # this hook has a 'settings' property defined. it is expecting
-                # 'settings' to be passed to the processing method.
-                return self._hook_instance.process_file(
-                    self.settings, item, path)
-            else:
-                # the hook hasn't been updated to handle collector settings.
-                # call the method without a settings argument
-                return self._hook_instance.process_file(item, path)
+            return self._hook_instance.process_file(item, path)
         except Exception, e:
             error_msg = traceback.format_exc()
             logger.error(

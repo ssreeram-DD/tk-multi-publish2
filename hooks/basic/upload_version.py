@@ -1,11 +1,11 @@
 # Copyright (c) 2017 Shotgun Software Inc.
-# 
+#
 # CONFIDENTIAL AND PROPRIETARY
-# 
-# This work is provided "AS IS" and subject to the Shotgun Pipeline Toolkit 
+#
+# This work is provided "AS IS" and subject to the Shotgun Pipeline Toolkit
 # Source Code License included in this distribution package. See LICENSE.
-# By accessing, using, copying or modifying this work you indicate your 
-# agreement to the Shotgun Pipeline Toolkit Source Code License. All rights 
+# By accessing, using, copying or modifying this work you indicate your
+# agreement to the Shotgun Pipeline Toolkit Source Code License. All rights
 # not expressly granted therein are reserved by Shotgun Software Inc.
 
 import os
@@ -26,20 +26,15 @@ class UploadVersionPlugin(HookBaseClass):
         """
         Path to an png icon on disk
         """
-
         # look for icon one level up from this hook's folder in "icons" folder
-        return os.path.join(
-            self.disk_location,
-            "icons",
-            "review.png"
-        )
+        return self.parent.expand_path("{self}/hooks/icons/review.png")
 
     @property
     def name(self):
         """
         One line display name describing the plugin
         """
-        return "Upload for review"
+        return "Upload for Review"
 
     @property
     def description(self):
@@ -67,7 +62,7 @@ class UploadVersionPlugin(HookBaseClass):
         # TODO: when settings editable, describe upload vs. link
 
     @property
-    def settings(self):
+    def settings_schema(self):
         """
         Dictionary defining the settings that this plugin expects to recieve
         through the settings parameter in the accept, validate, publish and
@@ -78,46 +73,30 @@ class UploadVersionPlugin(HookBaseClass):
             {
                 "Settings Name": {
                     "type": "settings_type",
-                    "default": "default_value",
+                    "default_value": "default_value",
                     "description": "One line description of the setting"
             }
 
         The type string should be one of the data types that toolkit accepts as
         part of its environment configuration.
         """
-        return {
-            "File Extensions": {
-                "type": "str",
-                "default": "jpeg, jpg, png, mov, mp4",
-                "description": "File Extensions of files to include"
-            },
-            "Upload": {
-                "type": "bool",
-                "default": True,
-                "description": "Upload content to Shotgun?"
-            },
-            "Link Local File": {
-                "type": "bool",
-                "default": True,
-                "description": "Should the local file be referenced by Shotgun"
-            },
+        schema = super(UploadVersionPlugin, self).settings_schema
+        schema["Item Type Filters"]["default_value"] = ["file.texture", "file.image", "file.video"]
 
+        schema["Upload"] = {
+            "type": "bool",
+            "default_value": True,
+            "description": "Upload content to Shotgun"
         }
+        schema["Link Local File"] = {
+            "type": "bool",
+            "default_value": True,
+            "description": "Should the local file be referenced by Shotgun"
+        }
+        return schema
 
-    @property
-    def item_filters(self):
-        """
-        List of item types that this plugin is interested in.
 
-        Only items matching entries in this list will be presented to the
-        accept() method. Strings can contain glob patters such as *, for example
-        ["maya.*", "file.maya"]
-        """
-
-        # we use "video" since that's the mimetype category.
-        return ["file.image", "file.video"]
-
-    def accept(self, settings, item):
+    def accept(self, item):
         """
         Method called by the publisher to determine if an item is of any
         interest to this plugin. Only items matching the filters defined via the
@@ -135,56 +114,32 @@ class UploadVersionPlugin(HookBaseClass):
             - checked: If True, the plugin will be checked in the UI, otherwise
                 it will be unchecked. Optional, True by default.
 
-        :param settings: Dictionary of Settings. The keys are strings, matching
-            the keys returned in the settings property. The values are `Setting`
-            instances.
         :param item: Item to process
 
         :returns: dictionary with boolean keys accepted, required and enabled
         """
 
-        publisher = self.parent
-        file_path = item.properties["path"]
+        # Run the parent acceptance method
+        accept_data = super(UploadVersionPlugin, self).accept(item)
+        if not accept_data.get("accepted"):
+            return accept_data
 
-        file_info = publisher.util.get_file_path_components(file_path)
-        extension = file_info["extension"].lower()
+        path = item.properties.get("path")
+        if not path:
+            accept_data["accepted"] = False
+            return accept_data
 
-        valid_extensions = []
+        # return the accepted info
+        return accept_data
 
-        for ext in settings["File Extensions"].value.split(","):
-            ext = ext.strip().lstrip(".")
-            valid_extensions.append(ext)
-
-        self.logger.debug("Valid extensions: %s" % valid_extensions)
-
-        if extension in valid_extensions:
-            # log the accepted file and display a button to reveal it in the fs
-            self.logger.info(
-                "Version upload plugin accepted: %s" % (file_path,),
-                extra={
-                    "action_show_folder": {
-                        "path": file_path
-                    }
-                }
-            )
-
-            # return the accepted info
-            return {"accepted": True}
-        else:
-            self.logger.debug(
-                "%s is not in the valid extensions list for Version creation" %
-                (extension,)
-            )
-            return {"accepted": False}
-
-    def validate(self, settings, item):
+    def validate(self, task_settings, item):
         """
         Validates the given item to check that it is ok to publish.
 
         Returns a boolean to indicate validity.
 
-        :param settings: Dictionary of Settings. The keys are strings, matching
-            the keys returned in the settings property. The values are `Setting`
+        :param task_settings: Dictionary of Settings. The keys are strings, matching
+            the keys returned in the task_settings property. The values are `Setting`
             instances.
         :param item: Item to process
 
@@ -192,12 +147,12 @@ class UploadVersionPlugin(HookBaseClass):
         """
         return True
 
-    def publish(self, settings, item):
+    def publish(self, task_settings, item):
         """
-        Executes the publish logic for the given item and settings.
+        Executes the publish logic for the given item and task_settings.
 
-        :param settings: Dictionary of Settings. The keys are strings, matching
-            the keys returned in the settings property. The values are `Setting`
+        :param task_settings: Dictionary of Settings. The keys are strings, matching
+            the keys returned in the task_settings property. The values are `Setting`
             instances.
         :param item: Item to process
         """
@@ -205,7 +160,7 @@ class UploadVersionPlugin(HookBaseClass):
         publisher = self.parent
         path = item.properties["path"]
 
-        # allow the publish name to be supplied via the item properties. this is
+        # allow the publish name to be supplied via the task_settings. this is
         # useful for collectors that have access to templates and can determine
         # publish information about the item that doesn't require further, fuzzy
         # logic to be used here (the zero config way)
@@ -233,7 +188,7 @@ class UploadVersionPlugin(HookBaseClass):
             publish_data = item.properties["sg_publish_data"]
             version_data["published_files"] = [publish_data]
 
-        if settings["Link Local File"].value:
+        if self.settings["Link Local File"].value:
             version_data["sg_path_to_movie"] = path
 
         # log the version data for debugging
@@ -257,7 +212,7 @@ class UploadVersionPlugin(HookBaseClass):
 
         thumb = item.get_thumbnail_as_path()
 
-        if settings["Upload"].value:
+        if self.settings["Upload"].value:
             self.logger.info("Uploading content...")
 
             # on windows, ensure the path is utf-8 encoded to avoid issues with
@@ -285,13 +240,13 @@ class UploadVersionPlugin(HookBaseClass):
 
         self.logger.info("Upload complete!")
 
-    def finalize(self, settings, item):
+    def finalize(self, task_settings, item):
         """
         Execute the finalization pass. This pass executes once all the publish
         tasks have completed, and can for example be used to version up files.
 
-        :param settings: Dictionary of Settings. The keys are strings, matching
-            the keys returned in the settings property. The values are `Setting`
+        :param task_settings: Dictionary of Settings. The keys are strings, matching
+            the keys returned in the task_settings property. The values are `Setting`
             instances.
         :param item: Item to process
         """
