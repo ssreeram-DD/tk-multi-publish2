@@ -21,7 +21,7 @@ HookBaseClass = sgtk.get_hook_baseclass()
 # this implementation assumes the version number is of the form 'v###'
 # coming just before an optional extension in the file/folder name and just
 # after a '.', '_', or '-'.
-VERSION_REGEX = re.compile("(.*)([._-])v(\d+)\.?([^.]+)?$", re.IGNORECASE)
+VERSION_REGEX = re.compile("(.*)([._-])v(\d+)\.?(\S+)?$", re.IGNORECASE)
 
 # a regular expression used to extract the frame number from the file.
 # this implementation assumes the version number is of the form '.####'
@@ -35,7 +35,7 @@ class BasicPathInfo(HookBaseClass):
     Methods for basic file path parsing.
     """
 
-    def get_publish_name(self, path, sequence=False):
+    def get_publish_name(self, path):
         """
         Given a file path, return the display name to use for publishing.
 
@@ -54,8 +54,6 @@ class BasicPathInfo(HookBaseClass):
             out: my_file.###.jpg
 
         :param path: The path to a file, likely one to be published.
-        :param sequence: If True, treat the path as a sequence name and replace
-            the frame number with placeholder
 
         :return: A publish display name for the provided path.
         """
@@ -65,34 +63,37 @@ class BasicPathInfo(HookBaseClass):
         logger = publisher.logger
         logger.debug("Getting publish name for path: %s ..." % (path,))
 
+        # See if input path is a sequence_path
+        seq_path = self.get_path_for_frame(path, 1001)
+        if seq_path:
+            path = seq_path
+
         path_info = publisher.util.get_file_path_components(path)
         filename = path_info["filename"]
 
-        version_pattern_match = re.search(VERSION_REGEX, filename)
         frame_pattern_match = re.search(FRAME_REGEX, filename)
-
-        if version_pattern_match:
-            # found a version number, use the other groups to remove it
-            prefix = version_pattern_match.group(1)
-            extension = version_pattern_match.group(4) or ""
-            if extension:
-                publish_name = "%s.%s" % (prefix, extension)
-            else:
-                publish_name = prefix
-        elif frame_pattern_match and sequence:
-            # found a frame number, meplace it with #s
+        if frame_pattern_match:
+            # found a frame number, replace it with #s
             prefix = frame_pattern_match.group(1)
             frame_sep = frame_pattern_match.group(2)
             frame = frame_pattern_match.group(3)
             display_str = "#" * len(frame)
+            filename = "%s%s%s" % (prefix, frame_sep, display_str)
             extension = frame_pattern_match.group(4) or ""
-            publish_name = "%s%s%s.%s" % (
-                prefix, frame_sep, display_str, extension)
-        else:
-            publish_name = filename
+            if extension:
+                filename = "%s.%s" % (filename, extension)
 
-        logger.debug("Returning publish name: %s" % (publish_name,))
-        return publish_name
+        # if there's a version in the filename, extract it
+        version_pattern_match = re.search(VERSION_REGEX, filename)
+        if version_pattern_match:
+            # found a version number, use the other groups to remove it
+            filename = version_pattern_match.group(1)
+            extension = version_pattern_match.group(4) or ""
+            if extension:
+                filename = "%s.%s" % (filename, extension)
+
+        logger.debug("Returning publish name: %s" % (filename,))
+        return filename
 
     def get_version_number(self, path):
         """
@@ -120,12 +121,78 @@ class BasicPathInfo(HookBaseClass):
 
         # if there's a version in the filename, extract it
         version_pattern_match = re.search(VERSION_REGEX, filename)
-
         if version_pattern_match:
             version_number = int(version_pattern_match.group(3))
 
         logger.debug("Returning version number: %s" % (version_number,))
         return version_number
+
+    def get_frame_number(self, path):
+        """
+        Given a path with a frame number, return the frame number.
+
+        :param path: The input path with a frame number
+
+        :return: The frame number as an integer
+        """
+
+        publisher = self.parent
+        path_info = publisher.util.get_file_path_components(path)
+
+        # see if there is a frame number
+        frame_pattern_match = re.search(FRAME_REGEX, path_info["filename"])
+
+        if not frame_pattern_match:
+            # no frame number detected. carry on.
+            return None
+
+        # Return the parsed frame number
+        return int(frame_pattern_match.group(3))
+
+    def get_path_for_frame(self, path, frame_num, frame_spec=None):
+        """
+        Given a path with a frame spec, return the expanded path where the frame
+        spec, such as ``{FRAME}`` or ``%04d`` or ``$F``, is replaced with a given 
+        frame number.
+
+        :param path: The input path with a frame number
+        :param frame_num: The frame number to replace the frame spec with.
+        :param frame_spec: The frame specification to be replaced.
+
+        :return: The full frame number path
+        """
+
+        publisher = self.parent
+        path_info = publisher.util.get_file_path_components(path)
+
+        # use template_key "SEQ" as default search regex
+        if not frame_spec:
+            seq_key = self.sgtk.template_keys.get("SEQ")
+            if seq_key:
+                frame_spec = seq_key.default
+            else:
+                frame_spec = "%%04d"
+
+        # see if there is a frame number
+        SPEC_REGEX = re.compile("(.*)([._-])(%s)\.([^.]+)$" % frame_spec)
+        frame_pattern_match = re.search(SPEC_REGEX, path_info["filename"])
+
+        if not frame_pattern_match:
+            # no frame spec detected. carry on.
+            return None
+
+        prefix = frame_pattern_match.group(1)
+        frame_sep = frame_pattern_match.group(2)
+        frame_str = frame_pattern_match.group(3)
+        extension = frame_pattern_match.group(4) or ""
+
+        seq_filename = "%s%s%s" % (prefix, frame_sep, frame_num)
+
+        if extension:
+            seq_filename = "%s.%s" % (seq_filename, extension)
+
+        # build the full sequence path
+        return os.path.join(path_info["folder"], seq_filename)
 
     def get_frame_sequence_path(self, path, frame_spec=None):
         """
@@ -157,8 +224,12 @@ class BasicPathInfo(HookBaseClass):
 
         # make sure we maintain the same padding
         if not frame_spec:
-            padding = len(frame_str)
-            frame_spec = "%%0%dd" % (padding,)
+            seq_key = self.sgtk.template_keys.get("SEQ")
+            if seq_key:
+                frame_spec = seq_key.default
+            else:
+                padding = len(frame_str)
+                frame_spec = "%%0%dd" % (padding,)
 
         seq_filename = "%s%s%s" % (prefix, frame_sep, frame_spec)
 
