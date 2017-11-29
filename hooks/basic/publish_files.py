@@ -1,11 +1,11 @@
 # Copyright (c) 2017 Shotgun Software Inc.
-# 
+#
 # CONFIDENTIAL AND PROPRIETARY
-# 
-# This work is provided "AS IS" and subject to the Shotgun Pipeline Toolkit 
+#
+# This work is provided "AS IS" and subject to the Shotgun Pipeline Toolkit
 # Source Code License included in this distribution package. See LICENSE.
-# By accessing, using, copying or modifying this work you indicate your 
-# agreement to the Shotgun Pipeline Toolkit Source Code License. All rights 
+# By accessing, using, copying or modifying this work you indicate your
+# agreement to the Shotgun Pipeline Toolkit Source Code License. All rights
 # not expressly granted therein are reserved by Shotgun Software Inc.
 
 import os
@@ -530,7 +530,7 @@ class PublishFilesPlugin(HookBaseClass):
         if not publish_type:
             raise TankError("publish_type not set for item: %s" % item.name)
 
-                    return publish_type
+        return publish_type
 
 
     def _get_publish_path(self, item, task_settings):
@@ -595,10 +595,10 @@ class PublishFilesPlugin(HookBaseClass):
 
             # Apply fields to publish_path_template to get publish path
             publish_path = pub_tmpl.apply_fields(fields)
-                self.logger.debug(
+            self.logger.debug(
                 "Used publish_path_template to determine the publish path: %s" %
-                    (publish_path,)
-                )
+                (publish_path,)
+            )
 
         # Otherwise fallback to publishing in place
         else:
@@ -660,8 +660,8 @@ class PublishFilesPlugin(HookBaseClass):
                     % work_path_template)
 
             publish_version = fields.get("version")
-                self.logger.debug(
-                    "Retrieved version number via work file template.")
+            self.logger.debug(
+                "Retrieved version number via work file template.")
 
         # Otherwise fallback on file path parsing
         else:
@@ -748,10 +748,10 @@ class PublishFilesPlugin(HookBaseClass):
             if work_tmpl:
                 missing_keys = work_tmpl.missing_keys(fields, True)
                 if missing_keys:
-            self.logger.warning(
+                    self.logger.warning(
                         "Cannot resolve work_path_template (%s). Missing keys: %s" %
                         (work_path_template, pprint.pformat(missing_keys))
-            )
+                    )
                     name_path = None
                 else:
                     name_path = work_tmpl.apply_fields(fields)
