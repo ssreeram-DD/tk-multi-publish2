@@ -12,7 +12,7 @@ import os
 import glob
 import pprint
 import traceback
-
+import nuke
 import sgtk
 
 HookBaseClass = sgtk.get_hook_baseclass()
