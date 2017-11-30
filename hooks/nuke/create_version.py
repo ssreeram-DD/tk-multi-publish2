@@ -31,7 +31,7 @@ class NukeCreateVersionPlugin(HookBaseClass):
         self.__write_node_app = self.parent.engine.apps.get("tk-nuke-writenode")
 
 
-    def accept(self, item):
+    def accept(self, task_settings, item):
         """
         Method called by the publisher to determine if an item is of any
         interest to this plugin. Only items matching the filters defined via the
@@ -55,7 +55,7 @@ class NukeCreateVersionPlugin(HookBaseClass):
         """
 
         # Run the parent acceptance method
-        accept_data = super(NukeCreateVersionPlugin, self).accept(item)
+        accept_data = super(NukeCreateVersionPlugin, self).accept(task_settings, item)
         if not accept_data.get("accepted"):
             return accept_data
 
@@ -69,10 +69,9 @@ class NukeCreateVersionPlugin(HookBaseClass):
                 accept_data["checked"] = False
                 return accept_data
 
-            accept_data["task_settings"] = dict(
-                work_path_template    = self.__write_node_app.get_node_render_template(node).name,
-                publish_path_template = self.__write_node_app.get_node_publish_template(node).name
-            )
+            # Overwrite the work_path_template and publish_path_template settings for this task
+            task_settings["work_path_template"] = self.__write_node_app.get_node_render_template(node).name
+            task_settings["publish_path_template"] = self.__write_node_app.get_node_publish_template(node).name
 
         # return the accepted info
         return accept_data

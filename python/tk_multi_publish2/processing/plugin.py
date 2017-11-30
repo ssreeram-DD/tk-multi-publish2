@@ -8,12 +8,13 @@
 # agreement to the Shotgun Pipeline Toolkit Source Code License. All rights
 # not expressly granted therein are reserved by Shotgun Software Inc.
 
+import copy
 import traceback
 import sgtk
 from contextlib import contextmanager
 from sgtk.platform.qt import QtCore, QtGui
 from sgtk.platform.bundle import resolve_setting_value
-from .setting import Setting
+from .setting import *
 
 logger = sgtk.platform.get_logger(__name__)
 
@@ -31,10 +32,7 @@ class PluginBase(object):
         :param settings: Dictionary of collector-specific settings
         :param logger: a logger object that will be used by the hook
         """
-
-        # all plugins need a hook and a name
-        self._configured_settings = settings
-
+        self._logger = logger
         self._bundle = sgtk.platform.current_bundle()
 
         # create an instance of the hook
@@ -43,11 +41,26 @@ class PluginBase(object):
         hook_path = ':'.join((self._base_hook_path, self._path))
         self._hook_instance = self._bundle.create_hook_instance(hook_path)
 
-        self._logger = logger
-        self._settings = {}
+        try:
+            self._settings_schema = self._hook_instance.settings_schema
+        except NotImplementedError as e:
+            # property not defined by the hook
+            self._logger.error("No settings_schema defined by hook: %s" % self)
+            self._settings_schema = {}
 
         # kick things off
-        self._validate_and_resolve_config()
+        try:
+            self._settings = self.validate_and_resolve_settings(settings)
+        except Exception as e:
+            error_msg = traceback.format_exc()
+            self._logger.error(
+                "Error validating settings for plugin %s in environment '%s': %s" %
+                (self, self._bundle.env.name, error_msg)
+            )
+            self._settings = {}
+
+        # add settings to cache
+        settings_cache.add(self, self._bundle.context, self._settings)
 
         # pass the settings dict to the hook
         if hasattr(self._hook_instance.__class__, "settings"):
@@ -58,52 +71,6 @@ class PluginBase(object):
         String representation
         """
         return "<%s %s>" % (self.__class__.__name__, self._path)
-
-    def _validate_and_resolve_config(self):
-        """
-        Init helper method.
-
-        Validates plugin settings and creates Setting objects
-        that can be accessed from the settings property.
-        """
-        try:
-            hook_settings_schema = self._hook_instance.settings_schema
-        except NotImplementedError, e:
-            import traceback
-            # property not defined by the hook
-            logger.error("no settings schema property defined by hook: %s" % self._path)
-            hook_settings_schema = {}
-
-        # Settings schema will be in the form:
-        # "setting_a": {
-        #     "type": "int",
-        #     "default": 5,
-        #     "description": "foo bar baz"
-        # },
-
-        for setting_name, setting_schema in hook_settings_schema.iteritems():
-
-            value = resolve_setting_value(
-                self._bundle.sgtk,
-                self._bundle._get_engine_name(),
-                setting_schema,
-                self._configured_settings,
-                setting_name,
-                None,
-                self._bundle
-            )
-
-            # TODO: validate that all required settings are resolved
-
-            setting = Setting(
-                setting_name,
-                data_type=setting_schema.get("type"),
-                default_value=setting_schema.get("default_value"),
-                description=setting_schema.get("description")
-            )
-            setting.value = value
-
-            self._settings[setting_name] = setting
 
     @property
     def logger(self):
@@ -118,6 +85,48 @@ class PluginBase(object):
         returns a dict of resolved raw settings given the current state
         """
         return self._settings
+
+    def validate_and_resolve_settings(self, settings):
+        """
+        Init helper method.
+
+        Validates plugin settings and creates Setting objects
+        that can be accessed from the settings property.
+        """
+        new_settings = {}
+
+        # Settings schema will be in the form:
+        # "setting_a": {
+        #     "type": "int",
+        #     "default": 5,
+        #     "description": "foo bar baz"
+        # },
+
+        for setting_name, setting_schema in self._settings_schema.iteritems():
+
+            # Resolve the setting value using the supplied schema
+            # This will also validate if setting is missing but required
+            value = resolve_setting_value(
+                self._bundle.sgtk,
+                self._bundle._get_engine_name(),
+                setting_schema,
+                settings,
+                setting_name,
+                None,
+                self._bundle
+            )
+
+            setting = Setting(
+                setting_name,
+                data_type=setting_schema.get("type"),
+                default_value=setting_schema.get("default_value"),
+                description=setting_schema.get("description")
+            )
+            setting.value = value
+
+            new_settings[setting_name] = setting
+
+        return new_settings
 
 
 class PublishPlugin(PluginBase):
@@ -255,13 +264,6 @@ class PublishPlugin(PluginBase):
         """
         return self._icon_pixmap
 
-    @property
-    def settings(self):
-        """
-        returns a dict of resolved raw settings given the current state
-        """
-        return self._settings
-
     def run_create_settings_widget(self, parent):
         """
         Creates a custom widget to edit a plugin's settings.
@@ -295,7 +297,46 @@ class PublishPlugin(PluginBase):
         with self._handle_plugin_error(None, "Error writing settings to UI: %s"):
             self._hook_instance.set_ui_settings(parent, settings)
 
-    def run_accept(self, item):
+
+    def init_task_settings(self, item):
+        """
+        Initializes an instance of this plugin's settings for the item's context,
+        either from the settings cache, or from the raw app settings. Then passes
+        those settings to the hook init_task_settings for any customization.
+
+        :param item: Item to analyze
+        :returns: dictionary of task settings
+        """
+        try:
+            # Check the cache to see if we already have setting for this plugin/context pair
+            settings = settings_cache.get(self, item.context)
+            if not settings:
+                # If they aren't in the cache, then go get the raw settings
+                settings = get_raw_plugin_settings(self, item.context)
+
+                # Resolve the settings
+                settings = self.validate_and_resolve_settings(settings)
+
+                # Add them to the cache
+                settings_cache.add(self, item.context, settings)
+
+            # Make a copy since other tasks may be referencing the same settings
+            settings = copy.deepcopy(settings)
+
+            return self._hook_instance.init_task_settings(settings, item)
+
+        except Exception:
+            error_msg = traceback.format_exc()
+            self._logger.error(
+                "Error running init_task_settings for %s" % self,
+                extra = _get_error_extra_info(error_msg)
+            )
+            return {}
+        finally:
+            # give qt a chance to do stuff
+            QtCore.QCoreApplication.processEvents()
+
+    def run_accept(self, task_settings, item):
         """
         Executes the hook accept method for the given item
 
@@ -303,7 +344,7 @@ class PublishPlugin(PluginBase):
         :returns: dictionary with boolean keys accepted/visible/enabled/checked
         """
         try:
-            return self._hook_instance.accept(item)
+            return self._hook_instance.accept(task_settings, item)
         except Exception:
             error_msg = traceback.format_exc()
             self._logger.error(

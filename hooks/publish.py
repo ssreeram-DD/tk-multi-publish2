@@ -95,7 +95,19 @@ class BasePublishPlugin(HookBaseClass):
         """
         return self.settings["Item Type Filters"].value
 
-    def accept(self, item):
+    def init_task_settings(self, task_settings, item):
+        """
+        Method called by the publisher to determine the initial settings for the
+        instantiated task.
+
+        :param task_settings: Instance of the plugin settings specific for this item
+        :param item: Item to process
+        :returns: dictionary of settings for this item's task
+        """
+        # Return the item-type specific settings
+        return task_settings["Item Type Settings"].value.get(item.type)
+
+    def accept(self, task_settings, item):
         """
         Method called by the publisher to determine if an item is of any
         interest to this plugin. Only items matching the filters defined via the
@@ -117,17 +129,11 @@ class BasePublishPlugin(HookBaseClass):
 
         :returns: dictionary with boolean keys accepted, required and enabled
         """
-        # Only accept this item if we have its item-type defined in the plugin settings dict
-        task_settings = self.settings["Item Type Settings"].value.get(item.type)
+        # Only accept this item if we have its task settings dict
         if not task_settings:
-            return {"accepted": False}
+            return { "accepted": False }
 
-        # return a reference to the item type-specific plugin settings
-        # as the initialization of the task settings
-        return {
-            "accepted": True,
-            "task_settings": task_settings
-        }
+        return { "accepted": True }
 
     def validate(self, task_settings, item):
         """

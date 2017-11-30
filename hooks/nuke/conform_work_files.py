@@ -37,7 +37,7 @@ class NukeConformWorkFilesPlugin(HookBaseClass):
         self.__write_node_app = self.parent.engine.apps.get("tk-nuke-writenode")
 
 
-    def accept(self, item):
+    def accept(self, task_settings, item):
         """
         Method called by the publisher to determine if an item is of any
         interest to this plugin. Only items matching the filters defined via the
@@ -71,7 +71,7 @@ class NukeConformWorkFilesPlugin(HookBaseClass):
                 )
 
         # Run the parent acceptance method
-        accept_data = super(NukeConformWorkFilesPlugin, self).accept(item)
+        accept_data = super(NukeConformWorkFilesPlugin, self).accept(task_settings, item)
         if not accept_data.get("accepted"):
             return accept_data
 
@@ -85,9 +85,8 @@ class NukeConformWorkFilesPlugin(HookBaseClass):
                 accept_data["checked"] = False
                 return accept_data
 
-            accept_data["task_settings"] = dict(
-                work_path_template = self.__write_node_app.get_node_render_template(node).name
-            )
+            # Overwrite the work_path_template setting for this task
+            task_settings["work_path_template"] = self.__write_node_app.get_node_render_template(node).name
 
         # return the accepted info
         return accept_data
@@ -108,6 +107,9 @@ class NukeConformWorkFilesPlugin(HookBaseClass):
 
             # Get work_path_template from the item
             work_file_path = item.properties["work_file_path"]
+            if item.properties["path"] == work_file_path:
+                self.logger.info("Work file(s) already conformed. Skipping")
+                return
 
             _save_session(work_file_path)
             

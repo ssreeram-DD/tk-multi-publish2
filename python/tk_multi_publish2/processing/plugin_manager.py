@@ -186,7 +186,11 @@ class PluginManager(object):
 
             for item in self._get_matching_items(plugin.item_filters, all_new_items):
                 logger.debug("seeing if %s is interested in %s" % (plugin, item))
-                accept_data = plugin.run_accept(item)
+
+                # Generate the task settings
+                task_settings = plugin.init_task_settings(item)
+
+                accept_data = plugin.run_accept(task_settings, item)
                 if accept_data.get("accepted"):
                     # this item was accepted by the plugin!
 
@@ -207,10 +211,7 @@ class PluginManager(object):
                     # all things are enabled by default unless stated otherwise
                     is_enabled = accept_data.get("enabled", True)
 
-                    # look to see if accept has returned any publish task settings
-                    settings = accept_data.get("task_settings", None)
-
-                    task = Task.create_task(plugin, item, is_visible, is_enabled, is_checked, settings)
+                    task = Task.create_task(plugin, item, is_visible, is_enabled, is_checked, task_settings)
                     self._tasks.append(task)
 
         return all_new_items

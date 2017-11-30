@@ -267,7 +267,7 @@ class PublishFilesPlugin(HookBaseClass):
         return schema
 
 
-    def accept(self, item):
+    def accept(self, task_settings, item):
         """
         Method called by the publisher to determine if an item is of any
         interest to this plugin. Only items matching the filters defined via the
@@ -291,7 +291,7 @@ class PublishFilesPlugin(HookBaseClass):
         """
 
         # Run the parent acceptance method
-        accept_data = super(PublishFilesPlugin, self).accept(item)
+        accept_data = super(PublishFilesPlugin, self).accept(task_settings, item)
         if not accept_data.get("accepted"):
             return accept_data
 

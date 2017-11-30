@@ -96,7 +96,7 @@ class UploadVersionPlugin(HookBaseClass):
         return schema
 
 
-    def accept(self, item):
+    def accept(self, task_settings, item):
         """
         Method called by the publisher to determine if an item is of any
         interest to this plugin. Only items matching the filters defined via the
@@ -118,12 +118,6 @@ class UploadVersionPlugin(HookBaseClass):
 
         :returns: dictionary with boolean keys accepted, required and enabled
         """
-
-        # Run the parent acceptance method
-        accept_data = super(UploadVersionPlugin, self).accept(item)
-        if not accept_data.get("accepted"):
-            return accept_data
-
         path = item.properties.get("path")
         if not path:
             accept_data["accepted"] = False

@@ -9,12 +9,56 @@
 # not expressly granted therein are reserved by Shotgun Software Inc.
 
 import os
+import threading
 import pprint
 
 import sgtk
 
 # create a logger to use throughout
 logger = sgtk.platform.get_logger(__name__)
+
+
+class Threaded(object):
+    """
+    Threaded base class that contains a threading.Lock member and an
+    'exclusive' function decorator that implements exclusive access
+    to the contained code using the lock
+    """
+    def __init__(self):
+        """
+        Construction
+        """
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def exclusive(func):
+        """
+        Static method intended to be used as a function decorator in derived
+        classes.  Use it by doing:
+
+            @Threaded.exclusive
+            def my_method(self, ...):
+                ...
+
+        :param func:    Function to decorate/wrap
+        :returns:       Wrapper function that executes the function inside the acquired lock
+        """
+        def wrapper(self, *args, **kwargs):
+            """
+            Internal wrapper method that executes the function with the specified arguments
+            inside the acquired lock
+
+            :param *args:       The function parameters
+            :param **kwargs:    The function named parameters
+            :returns:           The result of the function call
+            """
+            self._lock.acquire()
+            try:
+                return func(self, *args, **kwargs)
+            finally:
+                self._lock.release()
+
+        return wrapper
 
 
 # ---- file/path util functions
@@ -163,7 +207,7 @@ def get_frame_number(path):
 def get_path_for_frame(path, frame_num, frame_spec=None):
     """
     Given a path with a frame spec, return the expanded path where the frame
-    spec, such as ``{FRAME}`` or ``%04d`` or ``$F``, is replaced with a given 
+    spec, such as ``{FRAME}`` or ``%04d`` or ``$F``, is replaced with a given
     frame number.
 
     :param path: The input path with a frame number

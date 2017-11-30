@@ -119,7 +119,7 @@ class ConformWorkFilesPlugin(HookBaseClass):
         return schema
 
 
-    def accept(self, item):
+    def accept(self, task_settings, item):
         """
         Method called by the publisher to determine if an item is of any
         interest to this plugin. Only items matching the filters defined via the
@@ -143,7 +143,7 @@ class ConformWorkFilesPlugin(HookBaseClass):
         """
 
         # Run the parent acceptance method
-        accept_data = super(ConformWorkFilesPlugin, self).accept(item)
+        accept_data = super(ConformWorkFilesPlugin, self).accept(task_settings, item)
         if not accept_data.get("accepted"):
             return accept_data
 
@@ -153,7 +153,7 @@ class ConformWorkFilesPlugin(HookBaseClass):
             return accept_data
 
         # Get work_path_template from the accept_data
-        work_path_template = accept_data["task_settings"].get("work_path_template")
+        work_path_template = task_settings.get("work_path_template")
 
         # Call sub method for comparing the item's path with the work_path_template
         # to see if this plugin should be accepted.
@@ -212,8 +212,11 @@ class ConformWorkFilesPlugin(HookBaseClass):
                 )
                 return False
 
-        # For additional validations
+        # ---- check if the path is already conformed
+
         work_file_path = item.properties["work_file_path"]
+        if item.properties["path"] == work_file_path:
+            return True
 
         # ---- ensure the destination work file(s) don't already exist on disk
 
@@ -266,8 +269,11 @@ class ConformWorkFilesPlugin(HookBaseClass):
 
         publisher = self.parent
 
-        # Get work_path_template from the task_settings
+        # Skip publish if the work_file_path matches the input path
         work_file_path = item.properties["work_file_path"]
+        if item.properties["path"] == work_file_path:
+            self.logger.info("Work file(s) already conformed. Skipping")
+            return
 
         # Copy work files to new location
         processed_files = self._copy_files(work_file_path, item)
@@ -338,6 +344,9 @@ class ConformWorkFilesPlugin(HookBaseClass):
         publisher = self.parent
 
         work_path_template = task_settings.get("work_path_template")
+        if not work_path_template:
+            self.logger.info("work_path_template not defined. Skipping conform.")
+            return item.properties["path"]
 
         work_tmpl = publisher.get_template_by_name(work_path_template)
         if not work_tmpl:
