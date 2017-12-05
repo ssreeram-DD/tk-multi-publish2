@@ -132,7 +132,7 @@ def get_raw_plugin_settings(plugin, context):
     if not context:
         raise TankError("No context specified.")
 
-    env = get_environment_from_context(app.sgtk, context)
+    env = sgtk.platform.engine.get_environment_from_context(app.sgtk, context)
     if not env:
         raise TankError("Cannot determine environment for context: %s" % context)
 
