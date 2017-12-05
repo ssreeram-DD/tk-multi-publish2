@@ -176,7 +176,7 @@ class ConformWorkFilesPlugin(HookBaseClass):
 
         :returns: True if item is valid, False otherwise.
         """
-
+        path = item.properties["path"]
         publisher = self.parent
 
         # ---- ensure that input work file(s) exist on disk to be copied
@@ -185,12 +185,10 @@ class ConformWorkFilesPlugin(HookBaseClass):
             if not item.properties["sequence_paths"]:
                 self.logger.warn("File sequence does not exist for item: %s" % item.name)
                 return False
-            path = item.properties["sequence_paths"][0]
         else:
-            if not os.path.exists(item.properties["path"]):
+            if not os.path.exists(path):
                 self.logger.warn("File does not exist for item: %s" % item.name)
                 return False
-            path = item.properties["path"]
 
         # ---- validate the settings required to publish
 
@@ -215,7 +213,7 @@ class ConformWorkFilesPlugin(HookBaseClass):
         # ---- check if the path is already conformed
 
         work_file_path = item.properties["work_file_path"]
-        if item.properties["path"] == work_file_path:
+        if path == work_file_path:
             return True
 
         # ---- ensure the destination work file(s) don't already exist on disk
@@ -251,8 +249,17 @@ class ConformWorkFilesPlugin(HookBaseClass):
             )
             return False
 
-        self.logger.info("Work file(s) for item '%s' will be copied to "
-                "the work_file_path: %s" % (item.name, work_file_path))
+        self.logger.info(
+            "Work file(s) for item '%s' will be conformed." %
+                (item.name,),
+            extra={
+                "action_show_more_info": {
+                    "label": "Show Info",
+                    "tooltip": "Show more info",
+                    "text": "%s\n  ==> %s" % (path, work_file_path)
+                }
+            }
+        )
 
         return True
 
@@ -342,6 +349,7 @@ class ConformWorkFilesPlugin(HookBaseClass):
         Extracts the work file path via the configured work_path_template.
         """
         publisher = self.parent
+        fields = {}
 
         work_path_template = task_settings.get("work_path_template")
         if not work_path_template:
@@ -374,6 +382,28 @@ class ConformWorkFilesPlugin(HookBaseClass):
         return work_tmpl.apply_fields(fields)
 
 
+    def _get_version_number_r(self, item):
+        """
+        Recurse up item hierarchy to determine version number
+        """
+        publisher = self.parent
+        path = item.properties.get("path")
+
+        if not path:
+            if not item.is_root():
+                version = self._get_version_number_r(item.parent)
+            else:
+                version = 1
+        else:
+            version = publisher.util.get_version_number(path)
+            if not version:
+                if not item.is_root():
+                    version = self._get_version_number_r(item.parent)
+                else:
+                    version = 1
+        return version
+
+
     def _resolve_item_fields(self, item, task_settings):
         """
         Helper method used to get fields that might not normally be defined in the context.
@@ -390,11 +420,8 @@ class ConformWorkFilesPlugin(HookBaseClass):
             fields["width"] = 1920
             fields["height"] = 1080
 
-        # If item has version in file name, use it, otherwise, use parent item version
-        version = publisher.util.get_version_number(path)
-        if not version and not item.is_root():
-            version = publisher.util.get_version_number(item.parent.properties.get("path"))
-        fields["version"] = version or 1
+        # If item has version in file name, use it, otherwise, recurse up item hierarchy
+        fields["version"] = self._get_version_number_r(item)
 
         # Set the item name equal to the task name if defined
         if item.context.task:
