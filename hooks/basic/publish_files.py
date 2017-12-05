@@ -412,8 +412,17 @@ class PublishFilesPlugin(HookBaseClass):
             )
             return False
 
-        self.logger.info("A Publish will be created in Shotgun and linked to: %s" %
-                (item.properties["publish_path"],))
+        self.logger.info(
+            "A Publish will be created for item '%s'." %
+                (item.name,),
+            extra={
+                "action_show_more_info": {
+                    "label": "Show Info",
+                    "tooltip": "Show more info",
+                    "text": "Publish Path: %s" % (item.properties["publish_path"],)
+                }
+            }
+        )
 
         return True
 
