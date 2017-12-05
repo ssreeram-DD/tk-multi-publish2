@@ -976,18 +976,32 @@ class AppDialog(QtGui.QWidget):
         # item case, but we check to be completely sure. For the summary case,
         # we show the widget but we don't want to update selected items that
         # are on context change lockdown.
+        num_errors = 0
         sync_required = False
 
         if self._current_item is None:
             # this is the summary item - so update all items!
             for top_level_item in self._plugin_manager.top_level_items:
                 if top_level_item.context_change_allowed:
+                    self._progress_handler.set_phase(self._progress_handler.PHASE_LOAD)
+                    self._progress_handler.push("Updating context for all items")
                     top_level_item.context = context
+
+                    num_errors = self._progress_handler.pop()
                     sync_required = True
         else:
             if self._current_item.context_change_allowed:
+                self._progress_handler.set_phase(self._progress_handler.PHASE_LOAD)
+                self._progress_handler.push("Updating context for item: %s" % self._current_item.name)
                 self._current_item.context = context
+
+                num_errors = self._progress_handler.pop()
                 sync_required = True
+
+        if num_errors == 0:
+            self._progress_handler.logger.info("Context successfully updated.")
+        elif num_errors > 0:
+            self._progress_handler.logger.error("Errors reported. See log for details.")
 
         if sync_required:
             self._synchronize_tree()

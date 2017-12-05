@@ -230,8 +230,30 @@ class Item(object):
             return self._bundle.context
 
     def _set_context(self, context):
-        # setter for context property
+        """
+        Update the item's context and reprocess any associated tasks
+        """
         self._context = context
+
+        # Process any associated tasks or child items as well
+        self._set_context_r(context)
+
+    def _set_context_r(self, context):
+        """
+        Update context for any associated tasks or child items
+        """
+        for task in self.tasks:
+            # Get the updated task settings
+            task.settings = task.plugin.init_task_settings(self, context)
+
+            # Re-run acceptance
+            task.accept()
+
+        for child in self.children:
+            # If the child's context is not explicitly set,
+            # then we need to update it as well
+            if not child._context:
+                child._set_context_r(context)
 
     context = property(_get_context, _set_context)
 

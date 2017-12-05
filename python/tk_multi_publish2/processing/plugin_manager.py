@@ -185,34 +185,17 @@ class PluginManager(object):
         for plugin in self._publish_plugins:
 
             for item in self._get_matching_items(plugin.item_filters, all_new_items):
-                logger.debug("seeing if %s is interested in %s" % (plugin, item))
+                logger.debug("%s is interested in %s" % (plugin, item))
 
-                # Generate the task settings
-                task_settings = plugin.init_task_settings(item)
+                # Get the initial task settings
+                task_settings = plugin.init_task_settings(item, item.context)
 
-                accept_data = plugin.run_accept(task_settings, item)
-                if accept_data.get("accepted"):
-                    # this item was accepted by the plugin!
+                # Create a corresponding task
+                task = Task.create_task(plugin, item, task_settings)
+                self._tasks.append(task)
 
-                    # log the acceptance and display any extra info from the plugin
-                    plugin.logger.info(
-                        "Plugin: '%s' - Accepted %s" % (plugin.name, item.name),
-                        extra=accept_data.get("extra_info")
-                    )
-                    # look for bools accepted/visible/enabled/checked
-
-                    # TODO: Implement support for this!
-                    # all things are visible by default unless stated otherwise
-                    is_visible = accept_data.get("visible", True)
-
-                    # all things are checked by default unless stated otherwise
-                    is_checked = accept_data.get("checked", True)
-
-                    # all things are enabled by default unless stated otherwise
-                    is_enabled = accept_data.get("enabled", True)
-
-                    task = Task.create_task(plugin, item, is_visible, is_enabled, is_checked, task_settings)
-                    self._tasks.append(task)
+                # Run task acceptance
+                task.accept()
 
         return all_new_items
 

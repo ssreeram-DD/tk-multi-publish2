@@ -298,7 +298,7 @@ class PublishPlugin(PluginBase):
             self._hook_instance.set_ui_settings(parent, settings)
 
 
-    def init_task_settings(self, item):
+    def init_task_settings(self, item, context):
         """
         Initializes an instance of this plugin's settings for the item's context,
         either from the settings cache, or from the raw app settings. Then passes
@@ -309,16 +309,16 @@ class PublishPlugin(PluginBase):
         """
         try:
             # Check the cache to see if we already have setting for this plugin/context pair
-            settings = settings_cache.get(self, item.context)
+            settings = settings_cache.get(self, context)
             if not settings:
                 # If they aren't in the cache, then go get the raw settings
-                settings = get_raw_plugin_settings(self, item.context)
+                settings = get_raw_plugin_settings(self, context)
 
                 # Resolve the settings
                 settings = self.validate_and_resolve_settings(settings)
 
                 # Add them to the cache
-                settings_cache.add(self, item.context, settings)
+                settings_cache.add(self, context, settings)
 
             # Make a copy since other tasks may be referencing the same settings
             settings = copy.deepcopy(settings)
@@ -364,14 +364,14 @@ class PublishPlugin(PluginBase):
         :param item: Item to analyze
         :return: True if validation passed, False otherwise.
         """
-        status = False
-        with self._handle_plugin_error(None, "Error Validating: %s"):
-            status = self._hook_instance.validate(task_settings, item)
-
         # check that we are not trying to publish to a site level context
-        if item.context.project is None:
+        if item.context.task is None:
             status = False
-            self._logger.error("Please link '%s' to a Shotgun object and task!" % item.name)
+            self._logger.error("Please link '%s' to a Shotgun entity and task!" % item.name)
+        else:
+            status = False
+            with self._handle_plugin_error(None, "Error Validating: %s"):
+                status = self._hook_instance.validate(task_settings, item)
 
         if status:
             self._logger.info("Validation successful!")

@@ -35,6 +35,12 @@ class TreeNodeTask(TreeNodeBase):
         self.setFlags(self.flags() | QtCore.Qt.ItemIsSelectable)
 
         # set up defaults based on task settings
+        self.update()
+
+    def update(self):
+        """
+        Pull the widget's state from the associated task
+        """
         state = QtCore.Qt.Checked if self._task.checked else QtCore.Qt.Unchecked
         self.setData(0, self.CHECKBOX_ROLE, state)
         self._embedded_widget.set_checkbox_value(state)
@@ -67,6 +73,9 @@ class TreeNodeTask(TreeNodeBase):
         else:
             # set just this one
             super(TreeNodeTask, self).set_check_state(state)
+
+            # Push the checked state to underlying task object
+            self._task.checked = self.data(0, self.CHECKBOX_ROLE)
 
     @property
     def task(self):

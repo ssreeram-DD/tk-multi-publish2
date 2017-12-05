@@ -95,6 +95,17 @@ class UploadVersionPlugin(HookBaseClass):
         }
         return schema
 
+    def init_task_settings(self, task_settings, item):
+        """
+        Method called by the publisher to determine the initial settings for the
+        instantiated task.
+
+        :param task_settings: Instance of the plugin settings specific for this item
+        :param item: Item to process
+        :returns: dictionary of settings for this item's task
+        """
+        # Return the task settings
+        return task_settings
 
     def accept(self, task_settings, item):
         """
@@ -118,12 +129,18 @@ class UploadVersionPlugin(HookBaseClass):
 
         :returns: dictionary with boolean keys accepted, required and enabled
         """
+
+        # Run the parent acceptance method
+        accept_data = super(UploadVersionPlugin, self).accept(task_settings, item)
+        if not accept_data.get("accepted"):
+            return accept_data
+
         path = item.properties.get("path")
         if not path:
             accept_data["accepted"] = False
             return accept_data
 
-        # return the accepted info
+        # return the accepted data
         return accept_data
 
     def validate(self, task_settings, item):

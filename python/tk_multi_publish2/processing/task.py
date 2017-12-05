@@ -21,7 +21,7 @@ class Task(object):
     on a particular collector item.
     """
 
-    def __init__(self, plugin, item, visible, enabled, checked, settings):
+    def __init__(self, plugin, item, settings):
         """
         :param plugin: The plugin instance associated with this task
         :param item: The collector item associated with this task
@@ -32,10 +32,11 @@ class Task(object):
         """
         self._plugin = plugin
         self._item = item
-        self._settings = settings or {}
-        self._visible = visible
-        self._enabled = enabled
-        self._checked = checked
+        self._settings = settings
+        self._accepted = False
+        self._visible = True
+        self._enabled = True
+        self._checked = True
 
     def __repr__(self):
         """
@@ -44,7 +45,7 @@ class Task(object):
         return "<Task: %s for %s >" % (self._plugin, self._item)
 
     @classmethod
-    def create_task(cls, plugin, item, is_visible, is_enabled, is_checked, settings=None):
+    def create_task(cls, plugin, item, settings):
         """
         Factory method for new tasks.
 
@@ -56,7 +57,7 @@ class Task(object):
         :param settings: dict of initial settings to use for task
         :return: Task instance
         """
-        task = Task(plugin, item, is_visible, is_enabled, is_checked, settings)
+        task = Task(plugin, item, settings)
         plugin.add_task(task)
         item.add_task(task)
         logger.debug("Created %s" % task)
@@ -101,6 +102,11 @@ class Task(object):
         """
         return self._checked
 
+    @checked.setter
+    def checked(self, checked):
+        # setter for value
+        self._checked = bool(checked)
+
     @property
     def enabled(self):
         """
@@ -119,6 +125,43 @@ class Task(object):
     def settings(self, settings):
         # setter for value
         self._settings = settings
+
+    def accept(self):
+        """
+        Accept this task
+        """
+        accept_data = self.plugin.run_accept(self.settings, self.item)
+        if accept_data.get("accepted"):
+
+            # this item was accepted by the plugin!
+
+            # log the acceptance and display any extra info from the plugin
+            self.plugin.logger.info(
+                "Plugin: '%s' - Accepted %s" % (self.plugin.name, self.item.name),
+                extra=accept_data.get("extra_info")
+            )
+
+            # look for bools accepted/visible/enabled/checked
+
+            # TODO: Implement support for this!
+            # all things are visible by default unless stated otherwise
+            self._visible = accept_data.get("visible", True)
+
+            # all things are enabled by default unless stated otherwise
+            self._enabled = accept_data.get("enabled", True)
+
+            # only update node selection if this wasn't previously accepted
+            if not self._accepted:
+                self._accepted = True
+
+                # all things are checked by default unless stated otherwise
+                self._checked = accept_data.get("checked", True)
+
+        # Else disable and uncheck this task
+        else:
+            self._accepted = False
+            self._enabled = False
+            self._checked = False
 
     def validate(self):
         """

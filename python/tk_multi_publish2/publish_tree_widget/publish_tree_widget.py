@@ -174,6 +174,10 @@ class PublishTreeWidget(QtGui.QTreeWidget):
 
             if top_level_item.childCount() == 0:
                 self.takeTopLevelItem(top_level_index)
+                continue
+
+            # Use this opportunity to update the task states if necessary
+            self.update_tasks_for_item(top_level_item)
 
         # pass 3 - see if anything needs adding
         for item in self._plugin_manager.top_level_items:
@@ -387,6 +391,20 @@ class PublishTreeWidget(QtGui.QTreeWidget):
                 _check_r(child)
         root = self.invisibleRootItem()
         _check_r(root)
+
+    def update_tasks_for_item(self, item):
+        """
+        Sync the states for all item's tasks with their associated data
+
+        :param item: Widget item for which tasks should be updated
+        """
+        def _check_r(parent):
+            for child_index in xrange(parent.childCount()):
+                child = parent.child(child_index)
+                if isinstance(child, TreeNodeTask):
+                    child.update()
+                _check_r(child)
+        _check_r(item)
 
     def dropEvent(self, event):
         """
