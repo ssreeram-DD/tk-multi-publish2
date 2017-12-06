@@ -410,15 +410,37 @@ class ConformWorkFilesPlugin(HookBaseClass):
         Intended to be overridden by DCC-specific subclasses.
         """
         publisher = self.parent
-        path = item.properties["path"]
+        if item.properties["is_sequence"]:
+            path = item.properties["sequence_paths"][0]
+        else:
+            path = item.properties["path"]
 
         fields = {}
 
         # TODO: If exr, use OpenExr to introspect header and get displayWindow for WxH
-        path_info = publisher.util.get_file_path_components(path)
-        if path_info["extension"] == "exr":
-            fields["width"] = 1920
-            fields["height"] = 1080
+        try:
+            import OpenEXR
+            if OpenEXR.isOpenExrFile(path):
+                fh = OpenEXR.InputFile(path)
+                try:
+                    dw = fh.header()["displayWindow"]
+                    fields["width"] = dw.max.x - dw.min.x + 1
+                    fields["height"] = dw.max.y - dw.min.y + 1
+                except Exception as e:
+                    self.logger.error(
+                        "Error reading EXR header for item: %s" % (item.name,),
+                        extra={
+                            "action_show_more_info": {
+                                "label": "Show Info",
+                                "tooltip": "Show more info",
+                                "text": "Error reading file: %s\n  ==> %s" % (path, str(e))
+                            }
+                        }
+                    )
+                finally:
+                    fh.close()
+        except ImportError as e:
+            self.logger.error(str(e))
 
         # If item has version in file name, use it, otherwise, recurse up item hierarchy
         fields["version"] = self._get_version_number_r(item)
