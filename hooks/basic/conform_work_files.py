@@ -9,6 +9,7 @@
 # not expressly granted therein are reserved by Shotgun Software Inc.
 
 import os
+import datetime
 import glob
 import pprint
 import traceback
@@ -417,18 +418,18 @@ class ConformWorkFilesPlugin(HookBaseClass):
 
         fields = {}
 
-        # TODO: If exr, use OpenExr to introspect header and get displayWindow for WxH
+        # TODO: If image, use OIIO to introspect file and get WxH
         try:
-            import OpenEXR
-            if OpenEXR.isOpenExrFile(path):
-                fh = OpenEXR.InputFile(path)
+            from OpenImageIO import ImageInput
+            fh = ImageInput.open(path)
+            if fh:
                 try:
-                    dw = fh.header()["displayWindow"]
-                    fields["width"] = dw.max.x - dw.min.x + 1
-                    fields["height"] = dw.max.y - dw.min.y + 1
+                    spec = fh.spec()
+                    fields["width"] = spec.width
+                    fields["height"] = spec.height
                 except Exception as e:
                     self.logger.error(
-                        "Error reading EXR header for item: %s" % (item.name,),
+                        "Error getting resolution for item: %s" % (item.name,),
                         extra={
                             "action_show_more_info": {
                                 "label": "Show Info",
@@ -444,6 +445,18 @@ class ConformWorkFilesPlugin(HookBaseClass):
 
         # If item has version in file name, use it, otherwise, recurse up item hierarchy
         fields["version"] = self._get_version_number_r(item)
+
+        # Force use of %d format
+        fields["SEQ"] = "FORMAT: %d"
+
+        # use %V - full view printout as default for the eye field
+        fields["eye"] = "%V"
+
+        # add in date values for YYYY, MM, DD
+        today = datetime.date.today()
+        fields["YYYY"] = today.year
+        fields["MM"] = today.month
+        fields["DD"] = today.day
 
         # Set the item name equal to the task name if defined
         if item.context.task:
