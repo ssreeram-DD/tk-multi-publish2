@@ -157,10 +157,10 @@ def get_raw_plugin_settings(plugin, context):
         # application instance name as the current app instance.
         for settings in app_settings:
             if settings.get("app_instance") == app.instance_name:
-                app_settings = settings.get("settings")
+                app_settings = settings
                 break
     else:
-        app_settings = app_settings_list[0].get("settings")
+        app_settings = app_settings_list[0]
 
     if not app_settings:
         raise TankError(
@@ -170,13 +170,29 @@ def get_raw_plugin_settings(plugin, context):
             app.instance_name)
         )
 
+    new_env = app_settings["env_instance"]
+    new_eng = app_settings["engine_instance"]
+    new_app = app_settings["app_instance"]
+    new_settings = app_settings["settings"]
+    new_descriptor = new_env.get_app_descriptor(new_eng, new_app)
+
+    # Create a new app instance from the new env / context
+    new_app_obj = sgtk.platform.application.get_application(
+            app.engine, 
+            new_descriptor.get_path(), 
+            new_descriptor, 
+            new_settings, 
+            new_app, 
+            new_env,
+            context)
+
     # Now get the plugin settings matching this plugin
-    plugin_defs = app.get_setting_from(app_settings, "publish_plugins")
+    plugin_defs = new_app_obj.get_setting("publish_plugins")
     for plugin_def in plugin_defs:
         if plugin_def["name"] == plugin.name:
             return plugin_def["settings"]
 
     raise TankError(
         "Definition for app '%s' in env '%s' is missing settings for plugin "
-        "'%s' for context %s" % (app.instance_name, env.name, plugin.name, context)
+        "'%s' for context %s" % (new_app, new_env.name, plugin.name, context)
     )
