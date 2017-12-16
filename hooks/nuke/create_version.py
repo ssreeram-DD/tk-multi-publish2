@@ -69,8 +69,7 @@ class NukeCreateVersionPlugin(HookBaseClass):
                 accept_data["checked"] = False
                 return accept_data
 
-            # Overwrite the work_path_template and publish_path_template settings for this task
-            task_settings["work_path_template"] = self.__write_node_app.get_node_render_template(node).name
+            # Overwrite the publish_path_template settings for this task
             task_settings["publish_path_template"] = self.__write_node_app.get_node_publish_template(node).name
 
         # return the accepted info
