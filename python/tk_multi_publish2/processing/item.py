@@ -24,7 +24,7 @@ class Item(object):
     Items are organized as a tree with access to parent and children.
     """
 
-    def __init__(self, item_type, display_type, name, parent):
+    def __init__(self, item_type, display_type, name, parent, collector):
         """
         Items should always be generated via the :meth:`Item.create_item` factory
         method and never created via the constructor.
@@ -37,6 +37,7 @@ class Item(object):
         :param Item parent: Parent item.
         """
         self._name = name
+        self._collector = collector
         self._type = item_type
         self._display_type = display_type
         self._parent = parent
@@ -87,7 +88,7 @@ class Item(object):
 
         :returns: :class:`Item`
         """
-        return Item("_root", "_root", "_root", parent=None)
+        return Item("_root", "_root", "_root", parent=None, collector=None)
 
     def remove_item(self, item):
         """
@@ -107,7 +108,7 @@ class Item(object):
         """
         return self.parent is None
 
-    def create_item(self, item_type, display_type, name):
+    def create_item(self, item_type, display_type, name, collector=None):
         """
         Factory method for generating new items.
 
@@ -117,7 +118,7 @@ class Item(object):
         :param str name: The name to represent the item in a UI.
             This can be a node name in a DCC or a file name.
         """
-        child_item = Item(item_type, display_type, name, parent=self)
+        child_item = Item(item_type, display_type, name, parent=self, collector=collector)
         self._children.append(child_item)
         child_item._parent = self
         logger.debug("Created %s" % child_item)
@@ -129,6 +130,13 @@ class Item(object):
         Parent Item object
         """
         return self._parent
+
+    @property
+    def collector(self):
+        """
+        Collector Plugin object
+        """
+        return self._collector
 
     @property
     def children(self):
@@ -233,6 +241,9 @@ class Item(object):
         """
         Update the item's context and reprocess any associated tasks
         """
+        if not self.context_change_allowed:
+            raise AttributeError("Context change for item '%s' not allowed." % self.name)
+
         self._context = context
 
         # Process any associated tasks or child items as well
@@ -240,8 +251,12 @@ class Item(object):
 
     def _set_context_r(self, context):
         """
-        Update context for any associated tasks or child items
+        Update context for item, plus any associated tasks or child items
         """
+        # Run callback for re-initializing the item
+        if self.collector:
+            self.collector.on_context_changed(self)
+
         for task in self.tasks:
             # Get the updated task settings
             task.settings = task.plugin.init_task_settings(self, context)

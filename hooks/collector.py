@@ -75,3 +75,12 @@ class BaseCollectorPlugin(HookBaseClass):
             for the supplied path
         """
         raise NotImplementedError
+
+
+    def on_context_changed(self, item):
+        """
+        Callback to update the item on context changes.
+
+        :param item: The Item instance
+        """
+        raise NotImplementedError
