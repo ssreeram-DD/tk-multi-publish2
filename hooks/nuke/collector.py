@@ -33,9 +33,10 @@ class NukeSessionCollector(HookBaseClass):
         """
         # call base init
         super(NukeSessionCollector, self).__init__(parent)
-        
-        # cache the review submission app
+
+        # cache the write node and workfiles apps
         self.__write_node_app = self.parent.engine.apps.get("tk-nuke-writenode")
+        self.__workfiles_app = self.parent.engine.apps.get("tk-multi-workfiles2")
 
 
     def process_current_session(self, parent_item):
@@ -82,7 +83,7 @@ class NukeSessionCollector(HookBaseClass):
             # validation will succeed.
             self.logger.warn(
                 "The Nuke script has not been saved.",
-                extra=_get_save_as_action()
+                extra=self._get_save_as_action()
             )
 
         session_item = super(NukeSessionCollector, self)._add_file_item(
@@ -124,7 +125,8 @@ class NukeSessionCollector(HookBaseClass):
             session_item = parent_item.create_item(
                 "file.nukestudio",
                 "NukeStudio Project",
-                project.name()
+                project.name(),
+                self
             )
             session_item.set_icon_from_path(icon_path)
 
@@ -207,6 +209,78 @@ class NukeSessionCollector(HookBaseClass):
                         item.set_thumbnail_from_path(thumbnail)
 
 
+    def _get_workfile_name_field(self, item):
+        """
+        """
+        if item.type == "file.nuke":
+            return item.properties["fields"].get("name")
+
+        elif item.parent and not item.parent.is_root():
+            return self._get_workfile_name_field(item.parent)
+
+        return None
+
+
+    def _resolve_item_fields(self, item):
+        """
+        Helper method used to get fields that might not normally be defined in the context.
+        Intended to be overridden by DCC-specific subclasses.
+        """
+        # run the parent method first
+        fields = super(NukeSessionCollector, self)._resolve_item_fields(item)
+
+        # If this is a nuke session...
+        if item.type == "file.nuke":
+            if self.__workfiles_app:
+                # Get work_path_template from the workfiles app for the item's context
+                work_path_template = self.__workfiles_app.get_work_template(item.context)
+                if work_path_template.validate(item.properties["path"]):
+                    fields.update(work_path_template.get_fields(item.properties["path"]))
+
+        # Else get the "name" field from the parent workfile
+        else:
+            fields["name"] = self._get_workfile_name_field(item)
+
+
+        node = item.properties.get("node")
+        if node:
+            if node.Class() == "WriteTank":
+                if self.__write_node_app:
+                    # Get work_path_template from the write_node app and update fields
+                    work_path_template = self.__write_node_app.get_node_render_template(node)
+                    if work_path_template.validate(item.properties["path"]):
+                        fields.update(work_path_template.get_fields(item.properties["path"]))
+                else:
+                    self.logger.error("Unable to process item '%s' without "
+                            "the tk-nuke_writenode app!" % item.name)
+
+            # Else just get height, width, and output from the node
+            else:
+                fields["width"] = node.width()
+                fields["height"] = node.height()
+                fields["output"] = node.name()
+
+        return fields
+
+    def _get_save_as_action(self):
+        """
+        Simple helper for returning a log action dict for saving the session
+        """
+        # default save callback
+        callback = nuke.scriptSaveAs
+
+        # if workfiles2 is configured, use that for file save
+        if self.__workfiles_app:
+            callback = self.__workfiles_app.show_file_save_dlg
+
+        return {
+            "action_button": {
+                "label": "Save As...",
+                "tooltip": "Save the current session",
+                "callback": callback
+            }
+        }
+
 def _session_path():
     """
     Return the path to the current session
@@ -215,15 +289,3 @@ def _session_path():
     root_name = nuke.root().name()
     return None if root_name == "Root" else root_name
 
-
-def _get_save_as_action():
-    """
-    Simple helper for returning a log action dict for saving the session
-    """
-    return {
-        "action_button": {
-            "label": "Save As...",
-            "tooltip": "Save the current session",
-            "callback": nuke.scriptSaveAs
-        }
-    }
