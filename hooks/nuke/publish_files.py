@@ -76,16 +76,6 @@ class NukePublishFilesPlugin(HookBaseClass):
         :returns: dictionary with boolean keys accepted, required and enabled
         """
 
-        if item.type == "file.nuke":
-            if not item.properties["path"]:
-                # the session has not been saved before (no path determined).
-                # provide a save button. the session will need to be saved before
-                # validation will succeed.
-                self.logger.warn(
-                    "The Nuke script has not been saved.",
-                    extra=_get_save_as_action()
-                )
-
         # Run the parent acceptance method
         accept_data = super(NukePublishFilesPlugin, self).accept(task_settings, item)
         if not accept_data.get("accepted"):
@@ -101,9 +91,8 @@ class NukePublishFilesPlugin(HookBaseClass):
                 accept_data["checked"] = False
                 return accept_data
 
-            # Overwrite the publish_type, work_path_template and publish_path_template settings for this task
+            # Overwrite the publish_type and publish_path_template settings for this task
             task_settings["publish_type"] = self.__write_node_app.get_node_tank_type(node)
-            task_settings["work_path_template"] = self.__write_node_app.get_node_render_template(node).name
             task_settings["publish_path_template"] = self.__write_node_app.get_node_publish_template(node).name
 
         # return the accepted info
@@ -125,14 +114,6 @@ class NukePublishFilesPlugin(HookBaseClass):
         path = item.properties["path"]
 
         if item.type == 'file.nuke':
-            if not path:
-                # the session still requires saving. provide a save button.
-                # validation fails.
-                self.logger.error(
-                    "The Nuke script has not been saved.",
-                    extra=_get_save_as_action()
-                )
-                return False
 
             # if the file has a version number in it, see if the next version exists
             next_version_path = publisher.util.get_next_version_path(path)
@@ -286,16 +267,3 @@ def _save_session(path):
     Save the current session to the supplied path.
     """
     nuke.scriptSaveAs(path, True)
-
-
-def _get_save_as_action():
-    """
-    Simple helper for returning a log action dict for saving the session
-    """
-    return {
-        "action_button": {
-            "label": "Save As...",
-            "tooltip": "Save the current session",
-            "callback": nuke.scriptSaveAs
-        }
-    }

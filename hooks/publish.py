@@ -250,32 +250,12 @@ class BasePublishPlugin(HookBaseClass):
 
         publisher = self.parent
 
-        # if the item has a known work file template, see if the path
-        # matches. if not, warn the user and provide a way to save the file to
-        # a different path
-        work_path_template = task_settings.get("work_path_template")
-        work_fields = None
-
-        if work_path_template:
-            if work_path_template.validate(path):
-                work_fields = work_path_template.get_fields(path)
-
-        # if we have template and fields, use them to determine the version info
-        if work_fields and "version" in work_fields:
-
-            # template matched. bump version number and re-apply to the template
-            work_fields["version"] += 1
-            next_version_path = work_path_template.apply_fields(work_fields)
-            version = work_fields["version"]
-
-        # fall back to the "zero config" logic
+        next_version_path = publisher.util.get_next_version_path(path)
+        cur_version = publisher.util.get_version_number(path)
+        if cur_version:
+            version = cur_version + 1
         else:
-            next_version_path = publisher.util.get_next_version_path(path)
-            cur_version = publisher.util.get_version_number(path)
-            if cur_version:
-                version = cur_version + 1
-            else:
-                version = None
+            version = None
 
         return next_version_path, version
 

@@ -9,6 +9,7 @@
 # not expressly granted therein are reserved by Shotgun Software Inc.
 
 import os
+import copy
 import glob
 import pprint
 import traceback
@@ -23,73 +24,61 @@ DEFAULT_ITEM_TYPE_SETTINGS = {
     "file.alembic": {
         "publish_type": "Alembic Cache",
         "publish_name_template": None,
-        "work_path_template": None,
         "publish_path_template": None
     },
     "file.3dsmax": {
         "publish_type": "3dsmax Scene",
         "publish_name_template": None,
-        "work_path_template": None,
         "publish_path_template": None
     },
     "file.nukestudio": {
         "publish_type": "NukeStudio Project",
         "publish_name_template": None,
-        "work_path_template": None,
         "publish_path_template": None
     },
     "file.houdini": {
         "publish_type": "Houdini Scene",
         "publish_name_template": None,
-        "work_path_template": None,
         "publish_path_template": None
     },
     "file.maya": {
         "publish_type": "Maya Scene",
         "publish_name_template": None,
-        "work_path_template": None,
         "publish_path_template": None
     },
     "file.motionbuilder": {
         "publish_type": "Motion Builder FBX",
         "publish_name_template": None,
-        "work_path_template": None,
         "publish_path_template": None
     },
     "file.nuke": {
         "publish_type": "Nuke Script",
         "publish_name_template": None,
-        "work_path_template": None,
         "publish_path_template": None
     },
     "file.photoshop": {
         "publish_type": "Photoshop Image",
         "publish_name_template": None,
-        "work_path_template": None,
         "publish_path_template": None
     },
     "file.render.sequence": {
         "publish_type": "Rendered Image",
         "publish_name_template": None,
-        "work_path_template": None,
         "publish_path_template": None
     },
     "file.texture": {
         "publish_type": "Texture Image",
         "publish_name_template": None,
-        "work_path_template": None,
         "publish_path_template": None
     },
     "file.image": {
         "publish_type": "Image",
         "publish_name_template": None,
-        "work_path_template": None,
         "publish_path_template": None
     },
     "file.video": {
         "publish_type": "Movie",
         "publish_name_template": None,
-        "work_path_template": None,
         "publish_path_template": None
     },
 }
@@ -119,9 +108,6 @@ class PublishFilesPlugin(HookBaseClass):
         sequence_paths - If set, implies the "path" property represents a
             sequence of files (typically using a frame identifier such as %04d).
             This property should be a list of files on disk matching the "path".
-            If a work template is provided, and corresponds to the listed
-            frames, fields will be extracted and applied to the publish template
-            (if set) and copied to that publish location.
 
         is_sequence - A boolean defining whether or not this item is a sequence of files.
 
@@ -138,15 +124,7 @@ class PublishFilesPlugin(HookBaseClass):
 
         publish_name_template - If set in the plugin settings dictionary, will be
             supplied to SG as the publish name when registering the new publish.
-            If not available, will be determined by the "work_path_template"
-            property if available, falling back to the ``path_info`` hook
-            logic.
-
-        work_path_template - If set in the plugin settings dictionary, is used
-            to validate "path" and extract fields for further processing and
-            contextual discovery. For example, if configured and a version key
-            can be extracted, it will be used as the publish version to be
-            registered in Shotgun.
+            If not available, will fall back to the ``path_info`` hook logic.
 
         publish_path_template - If set in the plugin settings dictionary, used to
             determine where "path" should be copied prior to publishing. If
@@ -202,7 +180,7 @@ class PublishFilesPlugin(HookBaseClass):
         <h3>File versioning</h3>
         The <code>version</code> field of the resulting <b>Publish</b> in
         Shotgun will also reflect the version number identified in the filename.
-        The basic worklfow recognizes the following version formats by default:
+        The basic workflow recognizes the following version formats by default:
 
         <ul>
         <li><code>filename.v###.ext</code></li>
@@ -249,12 +227,6 @@ class PublishFilesPlugin(HookBaseClass):
                 "type": "template",
                 "description": "",
                 "fields": ["context", "version", "[output]", "[name]", "*"],
-                "allows_empty": True,
-            },
-            "work_path_template": {
-                "type": "template",
-                "description": "",
-                "fields": ["context", "*"],
                 "allows_empty": True,
             },
             "publish_path_template": {
@@ -551,22 +523,18 @@ class PublishFilesPlugin(HookBaseClass):
         :return: A string representing the output path to supply when
             registering a publish for the supplied item
 
-        Extracts the publish path via the configured work and publish templates
+        Extracts the publish path via the configured publish templates
         if possible.
         """
 
         publisher = self.parent
 
-        # Use the work_file_path if defined
-        path = item.properties.get("work_file_path")
-        if not path:
-            path = item.properties.get("path")
+        # Start with the item's fields
+        fields = copy.copy(item.properties.get("fields", {}))
 
-        work_path_template = task_settings.get("work_path_template")
         publish_path_template = task_settings.get("publish_path_template")
         publish_path = None
 
-        fields = {}
         # If a template is defined, get the publish path from it
         if publish_path_template:
 
@@ -577,23 +545,10 @@ class PublishFilesPlugin(HookBaseClass):
 
             # First get the fields from the context
             try:
-                fields.update(item.context.as_template_fields(pub_tmpl, validate=True))
+                fields.update(item.context.as_template_fields(pub_tmpl))
             except TankError, e:
                 self.logger.debug(
                     "Unable to get context fields for publish_path_template.")
-
-            # Next if there is a work_path_template, use it to get fields from the input path
-            if work_path_template:
-
-                work_tmpl = publisher.get_template_by_name(work_path_template)
-                if not work_tmpl:
-                    # this template was not found in the template config!
-                    raise TankError("The Template '%s' does not exist!" % work_path_template)
-
-                if work_tmpl.validate(path):
-                    self.logger.debug(
-                        "Work file template configured and matches file.")
-                    fields.update(work_tmpl.get_fields(path))
 
             missing_keys = pub_tmpl.missing_keys(fields, True)
             if missing_keys:
@@ -611,7 +566,7 @@ class PublishFilesPlugin(HookBaseClass):
 
         # Otherwise fallback to publishing in place
         else:
-            publish_path = path
+            publish_path = item.properties["path"]
             self.logger.debug(
                 "No publish_path_template defined. Publishing in place.")
 
@@ -624,60 +579,11 @@ class PublishFilesPlugin(HookBaseClass):
 
         :param item: The item to determine the publish version for
 
-        Extracts the publish version via the configured work template if
-        possible. Will fall back to using the path info hook.
+        Extracts the publish version from the item's "version" field
         """
 
-        publisher = self.parent
-
-        # Use the work_file_path if defined
-        path = item.properties.get("work_file_path")
-        if not path:
-            path = item.properties.get("path")
-
-        work_path_template = task_settings.get("work_path_template")
-        work_fields = None
-        publish_version = None
-
-        fields = {}
-        # First attempt to get it from the work_path_template
-        if work_path_template:
-
-            work_tmpl = publisher.get_template_by_name(work_path_template)
-            if not work_tmpl:
-                # this template was not found in the template config!
-                raise TankError("The Template '%s' does not exist!" % work_path_template)
-
-            # First get the fields from the context
-            try:
-                fields.update(item.context.as_template_fields(work_tmpl, validate=True))
-            except TankError, e:
-                self.logger.debug(
-                    "Unable to get context fields from work_path_template.")
-
-            # Then attempt to get the fields from the path
-            if work_tmpl.validate(path):
-                self.logger.debug(
-                    "Work file template configured and matches file.")
-                fields.update(work_tmpl.get_fields(path))
-
-            # if version number is one of the fields, use it to populate the
-            # publish information
-            if "version" not in fields:
-                raise TankError(
-                    "Unable to get version field from work_path_template (%s)"
-                    % work_path_template)
-
-            publish_version = fields.get("version")
-            self.logger.debug(
-                "Retrieved version number via work file template.")
-
-        # Otherwise fallback on file path parsing
-        else:
-            self.logger.debug("Using path info hook to determine publish info.")
-            publish_version = publisher.util.get_version_number(path) or 1
-
-        return publish_version
+        # Get the publish version from the item's fields
+        return item.properties["fields"].get("version", 1)
 
 
     def _get_publish_name(self, item, task_settings):
@@ -691,39 +597,13 @@ class PublishFilesPlugin(HookBaseClass):
 
         publisher = self.parent
 
-        # Use the work_file_path if defined
-        path = item.properties.get("work_file_path")
-        if not path:
-            path = item.properties.get("path")
+        # Start with the item's fields
+        fields = copy.copy(item.properties.get("fields", {}))
 
         publish_name_template = task_settings.get("publish_name_template")
-        work_path_template = task_settings.get("work_path_template")
         publish_name = None
 
-        fields = {}
-        # First attempt to get fields from the work_path_template if defined
-        if work_path_template:
-
-            work_tmpl = publisher.get_template_by_name(work_path_template)
-            if not work_tmpl:
-                # this template was not found in the template config!
-                raise TankError("The Template '%s' does not exist!" % work_path_template)
-
-            if work_tmpl.validate(path):
-                # First get the fields from the context
-                try:
-                    fields.update(item.context.as_template_fields(work_tmpl, validate=True))
-                    self.logger.debug(
-                        "Getting context fields from work_path_template.")
-                except TankError, e:
-                    self.logger.debug(
-                        "Unable to get context fields for work_path_template.")
-
-                fields.update(work_tmpl.get_fields(path))
-                self.logger.debug(
-                    "Work file template configured and matches file.")
-
-        # Next check if we have a publish_name_template defined and attempt to
+        # First check if we have a publish_name_template defined and attempt to
         # get the publish name from that
         if publish_name_template:
 
@@ -734,7 +614,7 @@ class PublishFilesPlugin(HookBaseClass):
 
             # First get the fields from the context
             try:
-                fields.update(item.context.as_template_fields(pub_tmpl, validate=True))
+                fields.update(item.context.as_template_fields(pub_tmpl))
             except TankError, e:
                 self.logger.debug(
                     "Unable to get context fields for publish_name_template.")
@@ -752,28 +632,9 @@ class PublishFilesPlugin(HookBaseClass):
 
         # Otherwise fallback on file path parsing
         else:
-
-            # Try getting the file path from the work_template if defined
-            if work_tmpl:
-                missing_keys = work_tmpl.missing_keys(fields, True)
-                if missing_keys:
-                    self.logger.warning(
-                        "Cannot resolve work_path_template (%s). Missing keys: %s" %
-                        (work_path_template, pprint.pformat(missing_keys))
-                    )
-                    name_path = None
-                else:
-                    name_path = work_tmpl.apply_fields(fields)
-                    self.logger.debug(
-                        "Retrieved publish_name via work_path_template.")
-
-            # Otherwise fallback to the input path name
-            if not name_path:
-                name_path = path
-                self.logger_debug(
-                    "Retrieved publish_name via source file path.")
-
             # Use built-in method for determining publish_name
-            publish_name = publisher.util.get_publish_name(name_path)
+            publish_name = publisher.util.get_publish_name(item.properties["path"])
+            self.logger.debug(
+                "Retrieved publish_name via source file path.")
 
         return publish_name

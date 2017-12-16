@@ -9,6 +9,7 @@
 # not expressly granted therein are reserved by Shotgun Software Inc.
 
 import os
+import copy
 import sgtk
 
 HookBaseClass = sgtk.get_hook_baseclass()
@@ -60,11 +61,12 @@ class CreateVersionPlugin(HookBaseClass):
         return """
         Create and upload a movie to Shotgun for review.<br><br>
 
-        A high resolution movie will be created in the publish_path_template
-        location, a <b>Version</b> entry will be created in Shotgun and a transcoded
-        copy of the file will be attached to it. The file can then be reviewed
-        via the project's <a href='%s'>Media</a> page, <a href='%s'>RV</a>, or
-        the <a href='%s'>Shotgun Review</a> mobile app.
+        A high resolution movie will be created in the movie_path_template
+        location set on the tk-multi-reviewsubmission app, a <b>Version</b>
+        entry will be created in Shotgun and a transcoded copy of the file will
+        be attached to it. The file can then be reviewed via the project's
+        <a href='%s'>Media</a> page, <a href='%s'>RV</a>, or the
+        <a href='%s'>Shotgun Review</a> mobile app.
         """ % (media_page_url, review_url, review_url)
 
     @property
@@ -88,14 +90,6 @@ class CreateVersionPlugin(HookBaseClass):
         """
         schema = super(CreateVersionPlugin, self).settings_schema
         schema["Item Type Filters"]["default_value"] = ["file.*.sequence"]
-        schema["Item Type Settings"]["values"]["items"] = {
-            "work_path_template": {
-                "type": "template",
-                "description": "",
-                "fields": ["context", "*"],
-                "allows_empty": True,
-            },
-        }
         return schema
 
 
@@ -132,7 +126,7 @@ class CreateVersionPlugin(HookBaseClass):
             return accept_data
 
         if not self.__review_submission_app:
-            self.logger.error("Unable to run %s without the "
+            self.logger.warning("Unable to run %s without the "
                     "tk-multi-reviewsubmission app!" % self.name)
             accept_data["enabled"] = False
             accept_data["checked"] = False
@@ -141,7 +135,7 @@ class CreateVersionPlugin(HookBaseClass):
         upload_to_shotgun = self.__review_submission_app.get_setting("upload_to_shotgun")
         store_on_disk = self.__review_submission_app.get_setting("store_on_disk")
         if not upload_to_shotgun and not store_on_disk:
-            self.logger.warn("tk-multi-reviewsubmission app is not configured "
+            self.logger.warning("tk-multi-reviewsubmission app is not configured "
                     "to store images on disk nor upload to shotgun!")
             accept_data["enabled"] = False
             accept_data["checked"] = False
@@ -169,24 +163,12 @@ class CreateVersionPlugin(HookBaseClass):
 
         if item.properties["is_sequence"]:
             if not item.properties["sequence_paths"]:
-                self.logger.warn("File sequence does not exist for item: %s" % item.name)
+                self.logger.warning("File sequence does not exist for item: %s" % item.name)
                 return False
         else:
             if not os.path.exists(item.properties["path"]):
-                self.logger.warn("File does not exist for item: %s" % item.name)
+                self.logger.warning("File does not exist for item: %s" % item.name)
                 return False
-
-        # ---- validate the settings required to publish
-
-        work_path_template = task_settings.get("work_path_template")
-        if not work_path_template:
-            self.logger.warn("work_path_template not defined for item: %s" % item.name)
-            return False
-
-        work_tmpl = publisher.get_template_by_name(work_path_template)
-        if not work_tmpl:
-            # this template was not found in the template config!
-            raise TankError("The Template '%s' does not exist!" % work_path_template)
 
         return True
 
@@ -201,14 +183,6 @@ class CreateVersionPlugin(HookBaseClass):
         :param item: Item to process
         """
 
-        publisher = self.parent
-        path = item.properties["path"]
-
-        # Get item properties populated by validate method
-        work_path_template = task_settings["work_path_template"]
-        work_tmpl = publisher.get_template_by_name(work_path_template)
-        work_path_fields = work_tmpl.get_fields(path)
-
         sg_publish_data = None
         if "sg_publish_data" in item.properties:
             sg_publish_data = item.properties["sg_publish_data"]
@@ -216,9 +190,15 @@ class CreateVersionPlugin(HookBaseClass):
         colorspace = self._get_colorspace(task_settings, item)
         first_frame, last_frame = self._get_frame_range(task_settings, item)
 
-        sg_version = self.__review_submission_app.render_and_submit_version(
-            work_tmpl,
-            work_path_fields,
+        # First copy the item's fields
+        fields = copy.copy(item.properties["fields"])
+
+        # Update with the fields from the context
+        fields.update(item.context.as_template_fields())
+
+        sg_version = self.__review_submission_app.render_and_submit_path(
+            item.properties["path"],
+            fields,
             first_frame,
             last_frame,
             [sg_publish_data],
