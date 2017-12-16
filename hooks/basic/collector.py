@@ -10,8 +10,10 @@
 
 import mimetypes
 import os
+import datetime
 import glob
 import pprint
+import urllib
 import sgtk
 
 HookBaseClass = sgtk.get_hook_baseclass()
@@ -186,6 +188,16 @@ class FileCollectorPlugin(HookBaseClass):
             return self._collect_file(parent_item, path)
 
 
+    def on_context_changed(self, item):
+        """
+        Callback to update the item on context changes.
+
+        :param item: The Item instance
+        """
+        # Set the item's fields property
+        item.properties["fields"] = self._resolve_item_fields(item)
+
+
     def _collect_file(self, parent_item, path):
         """
         Process the supplied file path.
@@ -283,7 +295,8 @@ class FileCollectorPlugin(HookBaseClass):
         file_item = parent_item.create_item(
             item_type,
             type_display,
-            display_name
+            display_name,
+            self
         )
 
         # Set the icon path
@@ -320,6 +333,9 @@ class FileCollectorPlugin(HookBaseClass):
                 "The following file was collected:<br>"
                 "<pre>%s</pre>" % (path,)
             )
+
+        # Set the item's fields property
+        file_item.properties["fields"] = self._resolve_item_fields(file_item)
 
         self.logger.info(
             "Collected item: %s" % display_name,
@@ -427,6 +443,89 @@ class FileCollectorPlugin(HookBaseClass):
             item_type=item_type,
             type_display=type_display
         )
+
+
+    def _get_version_number_r(self, item):
+        """
+        Recurse up item hierarchy to determine version number
+        """
+        publisher = self.parent
+        path = item.properties.get("path")
+
+        if not path:
+            if not item.is_root():
+                version = self._get_version_number_r(item.parent)
+            else:
+                version = 1
+        else:
+            version = publisher.util.get_version_number(path)
+            if not version:
+                if not item.is_root():
+                    version = self._get_version_number_r(item.parent)
+                else:
+                    version = 1
+        return version
+
+
+    def _resolve_item_fields(self, item):
+        """
+        Helper method used to get fields that might not normally be defined in the context.
+        Intended to be overridden by DCC-specific subclasses.
+        """
+        publisher = self.parent
+        if item.properties["is_sequence"]:
+            path = item.properties["sequence_paths"][0]
+        else:
+            path = item.properties["path"]
+
+        fields = {}
+
+        # TODO: If image, use OIIO to introspect file and get WxH
+        try:
+            from OpenImageIO import ImageInput
+            fh = ImageInput.open(path)
+            if fh:
+                try:
+                    spec = fh.spec()
+                    fields["width"] = spec.width
+                    fields["height"] = spec.height
+                except Exception as e:
+                    self.logger.error(
+                        "Error getting resolution for item: %s" % (item.name,),
+                        extra={
+                            "action_show_more_info": {
+                                "label": "Show Info",
+                                "tooltip": "Show more info",
+                                "text": "Error reading file: %s\n  ==> %s" % (path, str(e))
+                            }
+                        }
+                    )
+                finally:
+                    fh.close()
+        except ImportError as e:
+            self.logger.error(str(e))
+
+        # If item has version in file name, use it, otherwise, recurse up item hierarchy
+        fields["version"] = self._get_version_number_r(item)
+
+        # Force use of %d format
+        if item.properties["is_sequence"]:
+            fields["SEQ"] = "FORMAT: %d"
+
+        # use %V - full view printout as default for the eye field
+        fields["eye"] = "%V"
+
+        # add in date values for YYYY, MM, DD
+        today = datetime.date.today()
+        fields["YYYY"] = today.year
+        fields["MM"] = today.month
+        fields["DD"] = today.day
+
+        # Set the item name equal to the task name if defined
+        if item.context.task:
+            fields["name"] = urllib.quote(item.context.task["name"].replace(" ", "_").lower(), safe='')
+
+        return fields
 
 
 def _build_seq_extensions_list():
