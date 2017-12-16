@@ -102,11 +102,6 @@ class Task(object):
         """
         return self._checked
 
-    @checked.setter
-    def checked(self, checked):
-        # setter for value
-        self._checked = bool(checked)
-
     @property
     def enabled(self):
         """

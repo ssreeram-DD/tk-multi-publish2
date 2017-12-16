@@ -74,9 +74,6 @@ class TreeNodeTask(TreeNodeBase):
             # set just this one
             super(TreeNodeTask, self).set_check_state(state)
 
-            # Push the checked state to underlying task object
-            self._task.checked = self.data(0, self.CHECKBOX_ROLE)
-
     @property
     def task(self):
         """

@@ -174,10 +174,6 @@ class PublishTreeWidget(QtGui.QTreeWidget):
 
             if top_level_item.childCount() == 0:
                 self.takeTopLevelItem(top_level_index)
-                continue
-
-            # Use this opportunity to update the task states if necessary
-            self.update_tasks_for_item(top_level_item)
 
         # pass 3 - see if anything needs adding
         for item in self._plugin_manager.top_level_items:
@@ -267,6 +263,9 @@ class PublishTreeWidget(QtGui.QTreeWidget):
 
         # restore its state
         self.__set_item_state(widget_item, state)
+
+        # update the task statuses for this item
+        self.update_tasks_for_item(widget_item)
 
         # if the item is selected, scroll to it after the move
         if widget_item.isSelected():
