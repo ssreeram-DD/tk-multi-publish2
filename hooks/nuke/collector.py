@@ -262,6 +262,7 @@ class NukeSessionCollector(HookBaseClass):
 
         return fields
 
+
     def _get_save_as_action(self):
         """
         Simple helper for returning a log action dict for saving the session
@@ -280,6 +281,7 @@ class NukeSessionCollector(HookBaseClass):
                 "callback": callback
             }
         }
+
 
 def _session_path():
     """
