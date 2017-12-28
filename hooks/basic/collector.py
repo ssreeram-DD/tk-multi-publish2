@@ -185,7 +185,8 @@ class FileCollectorPlugin(HookBaseClass):
         if os.path.isdir(path):
             return self._collect_folder(parent_item, path)
         else:
-            return self._collect_file(parent_item, path)
+            item = self._collect_file(parent_item, path)
+            return [item] if item else []
 
 
     def on_context_changed(self, item):
