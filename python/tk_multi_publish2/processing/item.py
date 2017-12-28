@@ -153,6 +153,13 @@ class Item(object):
         """
         return self._properties
 
+    @properties.setter
+    def properties(self, properties):
+        """
+        Properties setter
+        """
+        self._properties = dict(properties)
+
     @property
     def tasks(self):
         """
