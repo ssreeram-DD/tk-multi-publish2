@@ -12,8 +12,14 @@ import copy
 import traceback
 import sgtk
 from contextlib import contextmanager
+
 from sgtk.platform.qt import QtCore, QtGui
 from sgtk.platform.bundle import resolve_setting_value
+from sgtk.platform.application import get_application
+from sgtk.platform.engine import get_environment_from_context
+from sgtk.platform import find_app_settings
+from sgtk import TankError
+
 from .setting import *
 
 logger = sgtk.platform.get_logger(__name__)
@@ -26,19 +32,16 @@ class PluginBase(object):
     Each object reflects an instance in the app configuration.
     """
 
-    def __init__(self, path, settings, logger):
+    def __init__(self, path, logger):
         """
         :param path: Path to the collector hook
-        :param settings: Dictionary of collector-specific settings
         :param logger: a logger object that will be used by the hook
         """
         self._logger = logger
         self._bundle = sgtk.platform.current_bundle()
 
         # create an instance of the hook
-        self._base_hook_path = ':'.join(('{self}/base.py', self._base_hook_path))
-
-        hook_path = ':'.join((self._base_hook_path, self._path))
+        hook_path = '{self}/base.py' + (":" + path if path else "")
         self._hook_instance = self._bundle.create_hook_instance(hook_path)
 
         try:
@@ -50,7 +53,7 @@ class PluginBase(object):
 
         # kick things off
         try:
-            self._settings = self.validate_and_resolve_settings(settings)
+            self._settings = self.build_settings_dict(self._bundle.context)
         except Exception as e:
             error_msg = traceback.format_exc()
             self._logger.error(
@@ -86,35 +89,33 @@ class PluginBase(object):
         """
         return self._settings
 
-    def validate_and_resolve_settings(self, settings):
+    @property
+    def settings_schema(self):
+        """
+        returns a dict of resolved raw settings given the current state
+        """
+        return self._settings_schema
+
+    def build_settings_dict(self, context):
         """
         Init helper method.
 
         Validates plugin settings and creates Setting objects
         that can be accessed from the settings property.
+
+        Settings schema will be in the form:
+            "setting_a": {
+                "type": "int",
+                "default": 5,
+                "description": "foo bar baz"
+            }
         """
+
+        # Get the resolved settings for the plugin from the specified context
+        resolved_settings = self._get_resolved_plugin_settings(context)
+
         new_settings = {}
-
-        # Settings schema will be in the form:
-        # "setting_a": {
-        #     "type": "int",
-        #     "default": 5,
-        #     "description": "foo bar baz"
-        # },
-
         for setting_name, setting_schema in self._settings_schema.iteritems():
-
-            # Resolve the setting value using the supplied schema
-            # This will also validate if setting is missing but required
-            value = resolve_setting_value(
-                self._bundle.sgtk,
-                self._bundle._get_engine_name(),
-                setting_schema,
-                settings,
-                setting_name,
-                None,
-                self._bundle
-            )
 
             setting = Setting(
                 setting_name,
@@ -122,11 +123,88 @@ class PluginBase(object):
                 default_value=setting_schema.get("default_value"),
                 description=setting_schema.get("description")
             )
-            setting.value = value
+            setting.value = resolved_settings[setting_name]
 
             new_settings[setting_name] = setting
 
         return new_settings
+
+    def _get_resolved_plugin_settings(self, context):
+        """
+        Find and resolve settings for the plugin in the specified context
+
+        :param context: Context in which to look for settings.
+
+        :returns: The plugin settings for the given context or None.
+        """
+        app = self._bundle
+
+        if not context:
+            raise TankError("No context specified.")
+
+        env = get_environment_from_context(app.sgtk, context)
+        if not env:
+            raise TankError("Cannot determine environment for context: %s" % context)
+
+        # find settings for all instances of app in the environment picked for the given context:
+        app_settings_list = find_app_settings(
+            app.engine.name,
+            app.name,
+            app.sgtk,
+            context,
+            app.engine.instance_name
+        )
+
+        # No settings found, raise an error
+        if not app_settings_list:
+            raise TankError("Cannot find settings for %s in env: '%s' for context "
+                "%s" % (app.name, env.name, context)
+            )
+
+        if len(app_settings_list) > 1:
+            # There's more than one instance of that app for the engine instance, so we'll
+            # need to deterministically pick one. We'll pick the one with the same
+            # application instance name as the current app instance.
+            for settings in app_settings:
+                if settings.get("app_instance") == app.instance_name:
+                    app_settings = settings
+                    break
+        else:
+            app_settings = app_settings_list[0]
+
+        if not app_settings:
+            raise TankError(
+                "Search for %s settings in env '%s' for context %s yielded too "
+                "many results (%s), none named '%s'" % (app.name, env.name, context,
+                ", ".join([s.get("app_instance") for s in app_settings_list]),
+                app.instance_name)
+            )
+
+        new_env = app_settings["env_instance"]
+        new_eng = app_settings["engine_instance"]
+        new_app = app_settings["app_instance"]
+        new_settings = app_settings["settings"]
+        new_descriptor = new_env.get_app_descriptor(new_eng, new_app)
+
+        # Create a new app instance from the new env / context
+        new_app_obj = get_application(
+                app.engine, 
+                new_descriptor.get_path(), 
+                new_descriptor, 
+                new_settings, 
+                new_app, 
+                new_env,
+                context)
+
+        # Inject this plugin's schema for proper resolution
+        resolved_settings = self._get_resolved_settings(new_app_obj)
+        if not resolved_settings:
+            raise TankError(
+                "Definition for app '%s' in env '%s' is missing settings for plugin "
+                "'%s' for context %s" % (new_app, new_env.name, self.name, context)
+            )
+
+        return resolved_settings
 
 
 class PublishPlugin(PluginBase):
@@ -137,24 +215,22 @@ class PublishPlugin(PluginBase):
     app configuration.
     """
 
-    def __init__(self, name, path, settings, logger):
+    def __init__(self, name, path, logger):
         """
         :param name: Name to be used for this plugin instance
         :param path: Path to publish plugin hook
-        :param settings: Dictionary of plugin-specific settings
         :param logger: a logger object that will be used by the hook
         """
         # all plugins need a hook and a name
         self._name = name
-        self._path = path
+        self._path = path or ""
+
+        # Prepend hook path with publish plugin base class
+        hook_path = '{self}/publish.py' + (":" + path if path else "")
+
+        super(PublishPlugin, self).__init__(hook_path, logger)
 
         self._tasks = []
-
-        self._base_hook_path = '{self}/publish.py'
-        hook_path = ':'.join((self._base_hook_path, self._path))
-
-        super(PublishPlugin, self).__init__(hook_path, settings, logger)
-
         self._icon_pixmap = self._load_plugin_icon()
 
     def _load_plugin_icon(self):
@@ -182,6 +258,30 @@ class PublishPlugin(PluginBase):
             pixmap = QtGui.QPixmap(":/tk_multi_publish2/item.png")
 
         return pixmap
+
+    def _get_resolved_settings(self, app_obj):
+        """
+        """
+        # Inject this plugin's schema for proper resolution
+        new_schema = copy.deepcopy(app_obj.descriptor.configuration_schema)        
+        new_schema["publish_plugins"]["values"]["items"]["settings"]["items"] = self.settings_schema
+
+        # Resolve the setting value, this also implicitly validates
+        plugin_defs = resolve_setting_value(
+                    app_obj.sgtk,
+                    app_obj.engine.name,
+                    new_schema["publish_plugins"],
+                    app_obj.settings,
+                    "publish_plugins",
+                    None,
+                    bundle=app_obj,
+                    validate=True
+                )
+
+        # Now get the plugin settings matching this plugin
+        for plugin_def in plugin_defs:
+            if plugin_def["name"] == self.name:
+                return plugin_def["settings"]
 
     @property
     def name(self):
@@ -311,11 +411,8 @@ class PublishPlugin(PluginBase):
             # Check the cache to see if we already have setting for this plugin/context pair
             settings = settings_cache.get(self, context)
             if not settings:
-                # If they aren't in the cache, then go get the raw settings
-                settings = get_raw_plugin_settings(self, context)
-
-                # Resolve the settings
-                settings = self.validate_and_resolve_settings(settings)
+                # If they aren't in the cache, then go get the settings for this context
+                settings = self.build_settings_dict(context)
 
                 # Add them to the cache
                 settings_cache.add(self, context, settings)
@@ -437,7 +534,7 @@ class CollectorPlugin(PluginBase):
 
     Each collector object reflects an instance in the app configuration.
     """
-    def __init__(self, path, settings, logger):
+    def __init__(self, path, logger):
         """
         :param name: Name to be used for this plugin instance
         :param path: Path to publish plugin hook
@@ -445,12 +542,12 @@ class CollectorPlugin(PluginBase):
         :param logger: a logger object that will be used by the hook
         """
         # all collector plugins need a hook
-        self._path = path
+        self._path = path or ""
 
-        self._base_hook_path = '{self}/collector.py'
-        hook_path = ':'.join((self._base_hook_path, self._path))
+        # Prepend hook path with collector plugin base class
+        hook_path = '{self}/collector.py' + (":" + path if path else "")
 
-        super(CollectorPlugin, self).__init__(hook_path, settings, logger)
+        super(CollectorPlugin, self).__init__(hook_path, logger)
 
     def run_process_current_session(self, item):
         """
@@ -486,6 +583,28 @@ class CollectorPlugin(PluginBase):
                 "Error running process_file for %s. %s" %
                 (self, error_msg)
             )
+
+    def _get_resolved_settings(self, app_obj):
+        """
+        """
+        # Inject this plugin's schema for proper resolution
+        new_schema = copy.deepcopy(app_obj.descriptor.configuration_schema)        
+        new_schema["collector_settings"]["items"] = self.settings_schema
+
+        # Resolve the setting value, this also implicitly validates
+        resolved_settings = resolve_setting_value(
+                    app_obj.sgtk,
+                    app_obj.engine.name,
+                    new_schema["collector_settings"],
+                    app_obj.settings,
+                    "collector_settings",
+                    None,
+                    bundle=app_obj,
+                    validate=True
+                )
+
+        return resolved_settings
+
 
 def _get_error_extra_info(error_msg):
     """

@@ -18,6 +18,7 @@ configuration:
     collector_settings:
         type: dict
         description: "Collector-specific configuration settings."
+        skip_validation: True
         default_value: {}
 
     path_info:
@@ -31,6 +32,7 @@ configuration:
     publish_plugins:
         type: list
         description: "List of publish plugins."
+        skip_validation: True
         values:
             type: dict
             items:

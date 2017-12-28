@@ -48,12 +48,10 @@ class PluginManager(object):
 
             publish_plugin_instance_name = plugin_def["name"]
             publish_plugin_hook_path = plugin_def["hook"]
-            publish_plugin_settings = plugin_def["settings"]
 
             plugin = PublishPlugin(
                 publish_plugin_instance_name,
                 publish_plugin_hook_path,
-                publish_plugin_settings,
                 self._logger
             )
             self._publish_plugins.append(plugin)
@@ -61,11 +59,9 @@ class PluginManager(object):
 
         # create collector plugin object
         collector_hook_path = self._bundle.get_setting("collector")
-        collector_settings = self._bundle.get_setting("collector_settings")
 
         self._collector = CollectorPlugin(
             collector_hook_path,
-            collector_settings,
             self._logger
         )
 
