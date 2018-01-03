@@ -205,24 +205,25 @@ class MayaSessionCollector(HookBaseClass):
         Creates items for files matching the work path template
         """
         try:
-            work_path = self._get_work_path(parent_item, work_template)
+            work_paths = self._get_work_paths(parent_item, work_template)
         except Exception as e:
             self.logger.warning("%s. Skipping..." % str(e))
             return
 
-        items = self.process_file(parent_item, work_path)
-        for item in items:
-            item.properties["work_path_template"] = work_template
+        for work_path in work_paths:
+            items = self.process_file(parent_item, work_path)
+            for item in items:
+                item.properties["work_path_template"] = work_template
 
 
-    def _get_work_path(self, parent_item, work_path_template):
+    def _get_work_paths(self, parent_item, work_path_template):
         """
-        Resolve the work path template using the supplied item.
+        Get paths matching the work path template using the supplied item's fields.
 
         :param parent_item: The item to determine the work path for
         :param work_path_template: The template string to resolve
 
-        :return: A string representing the resolved work path for
+        :return: A list of paths matching the resolved work path template for
             the supplied item
 
         Extracts the work path via the configured work templates
@@ -246,15 +247,8 @@ class MayaSessionCollector(HookBaseClass):
             self.logger.debug(
                 "Unable to get context fields for work_path_template.")
 
-        missing_keys = work_tmpl.missing_keys(fields, True)
-        if missing_keys:
-            raise TankError(
-                "Cannot resolve work_path_template (%s). Missing keys: %s" %
-                        (work_path_template, pprint.pformat(missing_keys))
-            )
-
-        # Apply fields to work_path_template to get work path
-        return work_tmpl.apply_fields(fields)
+        # Get the paths from the template using the known fields
+        return self.sgtk.abstract_paths_from_template(work_tmpl, fields)
 
 
     def _get_workfile_name_field(self, item):
