@@ -490,7 +490,7 @@ class FileCollectorPlugin(HookBaseClass):
         # TODO: If image, use OIIO to introspect file and get WxH
         try:
             from OpenImageIO import ImageInput
-            fh = ImageInput.open(path)
+            fh = ImageInput.open(str(path))
             if fh:
                 try:
                     spec = fh.spec()
