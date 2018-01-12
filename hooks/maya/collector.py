@@ -281,7 +281,9 @@ class MayaSessionCollector(HookBaseClass):
 
         # Else get the "name" field from the parent workfile
         else:
-            fields["name"] = self._get_workfile_name_field(item)
+            workfile_name = self._get_workfile_name_field(item)
+            if workfile_name:
+                fields["name"] = workfile_name
 
         # Set output to the layer name
         node = item.properties.get("node")

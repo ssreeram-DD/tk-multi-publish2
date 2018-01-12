@@ -148,7 +148,13 @@ class FileCollectorPlugin(HookBaseClass):
             "type_display": {
                 "type": "str",
                 "description": ""
-            }
+            },
+            "work_path_template": {
+                "type": "template",
+                "description": "",
+                "fields": ["context", "*"],
+                "allows_empty": True,
+            },
         }
         schema["Item Types"]["description"] = (
             "Dictionary of file type info that allows the basic "
@@ -508,6 +514,9 @@ class FileCollectorPlugin(HookBaseClass):
 
         # If item has version in file name, use it, otherwise, recurse up item hierarchy
         fields["version"] = self._get_version_number_r(item)
+
+        file_info = publisher.util.get_file_path_components(path)
+        fields["extension"] = file_info["extension"]
 
         # Force use of %d format
         if item.properties["is_sequence"]:
