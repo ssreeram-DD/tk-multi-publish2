@@ -248,7 +248,7 @@ class MayaSessionCollector(HookBaseClass):
                 "Unable to get context fields for work_path_template.")
 
         # Get the paths from the template using the known fields
-        return self.sgtk.abstract_paths_from_template(work_tmpl, fields)
+        return self.sgtk.abstract_paths_from_template(work_tmpl, fields, skip_missing_optional_keys=True)
 
 
     def _get_workfile_name_field(self, item):
