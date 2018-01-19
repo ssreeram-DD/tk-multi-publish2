@@ -15,6 +15,7 @@ import glob
 import pprint
 import urllib
 import sgtk
+from sgtk import TankError
 
 HookBaseClass = sgtk.get_hook_baseclass()
 
