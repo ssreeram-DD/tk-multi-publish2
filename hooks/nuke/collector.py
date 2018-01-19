@@ -1,7 +1,7 @@
 # Copyright (c) 2017 Shotgun Software Inc.
-# 
+#
 # CONFIDENTIAL AND PROPRIETARY
-# 
+#
 # This work is provided "AS IS" and subject to the Shotgun Pipeline Toolkit 
 # Source Code License included in this distribution package. See LICENSE.
 # By accessing, using, copying or modifying this work you indicate your 
@@ -33,6 +33,9 @@ class NukeSessionCollector(HookBaseClass):
         """
         # call base init
         super(NukeSessionCollector, self).__init__(parent)
+
+        # ugh...this is hacky
+        self.__work_path_template = None
 
         # cache the write node and workfiles apps
         self.__write_node_app = self.parent.engine.apps.get("tk-nuke-writenode")
@@ -209,57 +212,43 @@ class NukeSessionCollector(HookBaseClass):
                         item.set_thumbnail_from_path(thumbnail)
 
 
-    def _get_workfile_name_field(self, item):
-        """
-        """
-        if item.type == "file.nuke":
-            return item.properties["fields"].get("name")
-
-        elif item.parent and not item.parent.is_root():
-            return self._get_workfile_name_field(item.parent)
-
-        return None
-
-
     def _resolve_item_fields(self, item):
         """
         Helper method used to get fields that might not normally be defined in the context.
         Intended to be overridden by DCC-specific subclasses.
         """
-        # run the parent method first
+        node = item.properties.get("node")
+        if node and node.Class() == "WriteTank":
+            if self.__write_node_app:
+                # Get work_path_template from the write_node app and update fields
+                item.properties["work_path_template"] = \
+                    self.__write_node_app.get_node_render_template(node)
+            else:
+                self.logger.error("Unable to process item '%s' without "
+                        "the tk-nuke_writenode app!" % item.name)
+
+        # If this is a nuke session and we have the workfiles app defined...
+        elif item.type == "file.nuke" and self.__workfiles_app:
+            # Get work_path_template from the workfiles app for the item's context
+            # Note: this needs to happen here instead of during item initialization
+            # since the path may change if the context changes
+            item.properties["work_path_template"] = \
+                self.__workfiles_app.get_work_template(item.context)
+
+        # Else if we're processing an item from a search path, set the work path on the item
+        elif self.__work_path_template:
+            item.properties["work_path_template"] = self.__work_path_template
+
+        # Now run the parent resolve method
         fields = super(NukeSessionCollector, self)._resolve_item_fields(item)
 
-        # If this is a nuke session...
-        if item.type == "file.nuke":
-            if self.__workfiles_app:
-                # Get work_path_template from the workfiles app for the item's context
-                work_path_template = self.__workfiles_app.get_work_template(item.context)
-                if work_path_template.validate(item.properties["path"]):
-                    fields.update(work_path_template.get_fields(item.properties["path"]))
-
-        # Else get the "name" field from the parent workfile
-        else:
-            workfile_name = self._get_workfile_name_field(item)
-            if workfile_name:
-                fields["name"] = workfile_name
-
-
-        node = item.properties.get("node")
         if node:
-            if node.Class() == "WriteTank":
-                if self.__write_node_app:
-                    # Get work_path_template from the write_node app and update fields
-                    work_path_template = self.__write_node_app.get_node_render_template(node)
-                    if work_path_template.validate(item.properties["path"]):
-                        fields.update(work_path_template.get_fields(item.properties["path"]))
-                else:
-                    self.logger.error("Unable to process item '%s' without "
-                            "the tk-nuke_writenode app!" % item.name)
-
-            # Else just get height, width, and output from the node
-            else:
+            # If not defined, get the height and width from the node
+            if "width" not in fields or "height" not in fields:
                 fields["width"] = node.width()
                 fields["height"] = node.height()
+            # If not defined, set output field to the node name
+            if "output" not in fields:
                 fields["output"] = node.name()
 
         return fields

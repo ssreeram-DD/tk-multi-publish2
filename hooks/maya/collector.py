@@ -33,6 +33,9 @@ class MayaSessionCollector(HookBaseClass):
         # call base init
         super(MayaSessionCollector, self).__init__(parent)
 
+        # ugh...this is hacky
+        self.__work_path_template = None
+
         # cache the workfiles app
         self.__workfiles_app = self.parent.engine.apps.get("tk-multi-workfiles2")
 
@@ -204,16 +207,20 @@ class MayaSessionCollector(HookBaseClass):
         """
         Creates items for files matching the work path template
         """
+        # Track the current work template being processed
+        self.__work_path_template = work_template
+
         try:
             work_paths = self._get_work_paths(parent_item, work_template)
+            for work_path in work_paths:
+                items = self.process_file(parent_item, work_path)
+
         except Exception as e:
             self.logger.warning("%s. Skipping..." % str(e))
-            return
 
-        for work_path in work_paths:
-            items = self.process_file(parent_item, work_path)
-            for item in items:
-                item.properties["work_path_template"] = work_template
+        finally:
+            # Ensure this gets unset regardless
+            self.__work_path_template = None
 
 
     def _get_work_paths(self, parent_item, work_path_template):
@@ -248,19 +255,9 @@ class MayaSessionCollector(HookBaseClass):
                 "Unable to get context fields for work_path_template.")
 
         # Get the paths from the template using the known fields
-        return self.sgtk.abstract_paths_from_template(work_tmpl, fields, skip_missing_optional_keys=True)
-
-
-    def _get_workfile_name_field(self, item):
-        """
-        """
-        if item.type == "file.maya":
-            return item.properties["fields"].get("name")
-
-        elif item.parent and not item.parent.is_root():
-            return self._get_workfile_name_field(item.parent)
-
-        return None
+        return self.sgtk.abstract_paths_from_template(work_tmpl,
+                                                      fields,
+                                                      skip_missing_optional_keys=True)
 
 
     def _resolve_item_fields(self, item):
@@ -268,27 +265,24 @@ class MayaSessionCollector(HookBaseClass):
         Helper method used to get fields that might not normally be defined in the context.
         Intended to be overridden by DCC-specific subclasses.
         """
-        # run the parent method first
+        # If this is a maya session and we have the workfiles app defined...
+        if item.type == "file.maya" and self.__workfiles_app:
+            # Get work_path_template from the workfiles app for the item's context
+            # Note: this needs to happen here instead of during item initialization
+            # since the path may change if the context changes
+            item.properties["work_path_template"] = \
+                self.__workfiles_app.get_work_template(item.context)
+
+        # Else if we're processing an item from a search path, set the work path on the item
+        elif self.__work_path_template:
+            item.properties["work_path_template"] = self.__work_path_template
+
+        # Now run the parent resolve method
         fields = super(MayaSessionCollector, self)._resolve_item_fields(item)
 
-        # If this is a maya session...
-        if item.type == "file.maya":
-            if self.__workfiles_app:
-                # Get work_path_template from the workfiles app for the item's context
-                work_path_template = self.__workfiles_app.get_work_template(item.context)
-                if work_path_template.validate(item.properties["path"]):
-                    fields.update(work_path_template.get_fields(item.properties["path"]))
-
-        # Else get the "name" field from the parent workfile
-        else:
-            workfile_name = self._get_workfile_name_field(item)
-            if workfile_name:
-                fields["name"] = workfile_name
-
-        # Set output to the layer name
-        node = item.properties.get("node")
-        if node:
-            fields["output"] = node
+        # If not already defined, set output field to the layer name
+        if "output" not in fields:
+            fields["output"] = item.properties.get("node")
 
         return fields
 

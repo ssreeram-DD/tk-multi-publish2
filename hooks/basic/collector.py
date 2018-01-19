@@ -244,14 +244,34 @@ class FileCollectorPlugin(HookBaseClass):
             path = seq_path
             is_sequence = True
 
+        display_name = publisher.util.get_publish_name(path)
+
         # Make sure file(s) exist on disk
         if is_sequence:
             if not seq_files:
-                self.logger.warn("File sequence does not exist for '%s'. Skipping" % path)
+                self.logger.warn(
+                    "File sequence does not exist for item: '%s'. Skipping" % display_name,
+                    extra={
+                        "action_show_more_info": {
+                            "label": "Show Info",
+                            "tooltip": "Show more info",
+                            "text": "Path does not exist: %s" % (path,)
+                        }
+                    }
+                )
                 return
         else:
             if not os.path.exists(path):
-                self.logger.warn("File does not exist for '%s'. Skipping" % path)
+                self.logger.warn(
+                    "File does not exist for item: '%s'. Skipping" % display_name,
+                    extra={
+                        "action_show_more_info": {
+                            "label": "Show Info",
+                            "tooltip": "Show more info",
+                            "text": "Path does not exist: %s" % (path,)
+                        }
+                    }
+                )
                 return
 
         return self._add_file_item(parent_item, path, is_sequence, seq_files)
@@ -295,6 +315,7 @@ class FileCollectorPlugin(HookBaseClass):
         icon_path = item_info["icon_path"]
         item_type = item_info["item_type"]
         type_display = item_info["type_display"]
+        work_path_template = item_info["work_path_template"]
 
         display_name = publisher.util.get_publish_name(path)
 
@@ -340,6 +361,10 @@ class FileCollectorPlugin(HookBaseClass):
                 "The following file was collected:<br>"
                 "<pre>%s</pre>" % (path,)
             )
+
+        # If defined, add the work_path_template to the item's properties
+        if work_path_template:
+            file_item.properties["work_path_template"] = work_path_template
 
         # Set the item's fields property
         file_item.properties["fields"] = self._resolve_item_fields(file_item)
@@ -392,21 +417,21 @@ class FileCollectorPlugin(HookBaseClass):
         # default values used if no specific type can be determined
         type_display = "File"
         item_type = "file.unknown"
+        work_path_template = None
         default_icon = "{self}/hooks/icons/file.png"
 
         # keep track if a common type was identified for the extension
         common_type_found = False
 
         # look for the extension in the common file type info dict
-        for item in self.settings["Item Types"].value.iteritems():
-            item_type = item[0]
-            type_info = item[1]
+        for item_type, type_info in self.settings["Item Types"].value.iteritems():
 
             if extension in type_info["extensions"]:
                 # found the extension in the common types lookup. extract the
                 # item type, icon name.
                 type_display = type_info["type_display"]
                 icon_path = type_info["icon"]
+                work_path_template = type_info.get("work_path_template")
                 common_type_found = True
                 break
 
@@ -448,7 +473,8 @@ class FileCollectorPlugin(HookBaseClass):
         return dict(
             icon_path=icon_path,
             item_type=item_type,
-            type_display=type_display
+            type_display=type_display,
+            work_path_template=work_path_template
         )
 
 
@@ -474,6 +500,23 @@ class FileCollectorPlugin(HookBaseClass):
         return version
 
 
+    def _get_name_field_r(self, item):
+        """
+        Recurse up item hierarchy to determine the name field
+        """
+        if not item:
+            return None
+
+        name_field = item.properties["fields"].get("name")
+        if name_field:
+            return name_field
+
+        elif item.parent:
+            return self._get_workfile_name_field(item.parent)
+
+        return None
+
+
     def _resolve_item_fields(self, item):
         """
         Helper method used to get fields that might not normally be defined in the context.
@@ -487,36 +530,67 @@ class FileCollectorPlugin(HookBaseClass):
 
         fields = {}
 
-        # TODO: If image, use OIIO to introspect file and get WxH
-        try:
-            from OpenImageIO import ImageInput
-            fh = ImageInput.open(str(path))
-            if fh:
-                try:
-                    spec = fh.spec()
-                    fields["width"] = spec.width
-                    fields["height"] = spec.height
-                except Exception as e:
-                    self.logger.error(
-                        "Error getting resolution for item: %s" % (item.name,),
-                        extra={
-                            "action_show_more_info": {
-                                "label": "Show Info",
-                                "tooltip": "Show more info",
-                                "text": "Error reading file: %s\n  ==> %s" % (path, str(e))
-                            }
+        # If there is a work template, first attempt to get fields from parsing the path
+        work_path_template = item.properties.get("work_path_template")
+        if work_path_template:
+
+            tmpl = publisher.get_template_by_name(work_path_template)
+            if not tmpl:
+                # this template was not found in the template config!
+                raise TankError("The Template '%s' does not exist!" % work_path_template)
+
+            # If path doesn't match this template, then we should accept this plugin
+            tmpl_fields = tmpl.validate_and_get_fields(path)
+            if not tmpl_fields:
+                self.logger.warn(
+                    "Path does not match template for item: %s" % (item.name),
+                    extra={
+                        "action_show_more_info": {
+                            "label": "Show Info",
+                            "tooltip": "Show more info",
+                            "text": "Path cannot be parsed by template '%s': %s" %
+                            (work_path_template, path)
                         }
-                    )
-                finally:
-                    fh.close()
-        except ImportError as e:
-            self.logger.error(str(e))
+                    }
+                )
+            else:
+                fields.update(tmpl_fields)
+
+        # If not already populated, first attempt to get the width and height
+        if "width" not in fields or "height" not in fields:
+            # If image, use OIIO to introspect file and get WxH
+            try:
+                from OpenImageIO import ImageInput
+                fh = ImageInput.open(str(path))
+                if fh:
+                    try:
+                        spec = fh.spec()
+                        fields["width"] = spec.width
+                        fields["height"] = spec.height
+                    except Exception as e:
+                        self.logger.error(
+                            "Error getting resolution for item: %s" % (item.name,),
+                            extra={
+                                "action_show_more_info": {
+                                    "label": "Show Info",
+                                    "tooltip": "Show more info",
+                                    "text": "Error reading file: %s\n  ==> %s" % (path, str(e))
+                                }
+                            }
+                        )
+                    finally:
+                        fh.close()
+            except ImportError as e:
+                self.logger.error(str(e))
 
         # If item has version in file name, use it, otherwise, recurse up item hierarchy
+        # Note: this intentionally overwrites any value found in the work file
         fields["version"] = self._get_version_number_r(item)
 
-        file_info = publisher.util.get_file_path_components(path)
-        fields["extension"] = file_info["extension"]
+        # Get the file extension if not already defined
+        if "extension" not in fields:
+            file_info = publisher.util.get_file_path_components(path)
+            fields["extension"] = file_info["extension"]
 
         # Force use of %d format
         if item.properties["is_sequence"]:
@@ -531,9 +605,17 @@ class FileCollectorPlugin(HookBaseClass):
         fields["MM"] = today.month
         fields["DD"] = today.day
 
-        # Set the item name equal to the task name if defined
-        if item.context.task:
-            fields["name"] = urllib.quote(item.context.task["name"].replace(" ", "_").lower(), safe='')
+        # Try to set the name field if not defined
+        if "name" not in fields:
+            # First attempt to get it from the parent item
+            name_field = self._get_name_field_r(item.parent)
+            if name_field:
+                fields["name"] = name_field
+
+            # Else attempt to use a santized task name
+            elif item.context.task:
+                name_field = item.context.task["name"]
+                fields["name"] = urllib.quote(name_field.replace(" ", "_").lower(), safe='')
 
         return fields
 
