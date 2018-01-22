@@ -559,12 +559,15 @@ class CollectorPlugin(PluginBase):
         """
         try:
             return self._hook_instance.process_current_session(item)
-        except Exception, e:
+        except Exception:
             error_msg = traceback.format_exc()
-            logger.error(
-                "Error running process_current_session for %s. %s" %
-                (self, error_msg)
+            self._logger.error(
+                "Error running process_current_session for %s" % self,
+                extra = _get_error_extra_info(error_msg)
             )
+        finally:
+            # give qt a chance to do stuff
+            QtCore.QCoreApplication.processEvents()
 
     def run_process_file(self, item, path):
         """
@@ -577,12 +580,15 @@ class CollectorPlugin(PluginBase):
         """
         try:
             return self._hook_instance.process_file(item, path)
-        except Exception, e:
+        except Exception:
             error_msg = traceback.format_exc()
-            logger.error(
-                "Error running process_file for %s. %s" %
-                (self, error_msg)
+            self._logger.error(
+                "Error running process_file for %s" % self,
+                extra = _get_error_extra_info(error_msg)
             )
+        finally:
+            # give qt a chance to do stuff
+            QtCore.QCoreApplication.processEvents()
 
     def _get_resolved_settings(self, app_obj):
         """
