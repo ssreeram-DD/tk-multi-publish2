@@ -84,7 +84,7 @@ class NukeSessionCollector(HookBaseClass):
             # the session has not been saved before (no path determined).
             # provide a save button. the session will need to be saved before
             # validation will succeed.
-            self.logger.warn(
+            self.logger.warning(
                 "The Nuke script has not been saved.",
                 extra=self._get_save_as_action()
             )
@@ -222,7 +222,7 @@ class NukeSessionCollector(HookBaseClass):
             if self.__write_node_app:
                 # Get work_path_template from the write_node app and update fields
                 item.properties["work_path_template"] = \
-                    self.__write_node_app.get_node_render_template(node)
+                    self.__write_node_app.get_node_render_template(node).name
             else:
                 self.logger.error("Unable to process item '%s' without "
                         "the tk-nuke_writenode app!" % item.name)
@@ -233,7 +233,7 @@ class NukeSessionCollector(HookBaseClass):
             # Note: this needs to happen here instead of during item initialization
             # since the path may change if the context changes
             item.properties["work_path_template"] = \
-                self.__workfiles_app.get_work_template(item.context)
+                self.__workfiles_app.get_work_template(item.context).name
 
         # Else if we're processing an item from a search path, set the work path on the item
         elif self.__work_path_template:

@@ -110,7 +110,7 @@ class MayaSessionCollector(HookBaseClass):
             # the session has not been saved before (no path determined).
             # provide a save button. the session will need to be saved before
             # validation will succeed.
-            self.logger.warn(
+            self.logger.warning(
                 "The Maya scene has not been saved.",
                 extra=self._get_save_as_action()
             )
@@ -251,10 +251,20 @@ class MayaSessionCollector(HookBaseClass):
         try:
             fields.update(parent_item.context.as_template_fields(work_tmpl))
         except TankError as e:
-            self.logger.debug(
+            self.logger.warning(
                 "Unable to get context fields for work_path_template.")
 
         # Get the paths from the template using the known fields
+        self.logger.info(
+            "Searching for file(s) matching: '%s'" % work_path_template,
+            extra={
+                "action_show_more_info": {
+                    "label": "Show Info",
+                    "tooltip": "Show more info",
+                    "text": "Template: %s\nFields: %s" % (work_tmpl, fields)
+                }
+            }
+        )
         return self.sgtk.abstract_paths_from_template(work_tmpl,
                                                       fields,
                                                       skip_missing_optional_keys=True)
@@ -271,7 +281,7 @@ class MayaSessionCollector(HookBaseClass):
             # Note: this needs to happen here instead of during item initialization
             # since the path may change if the context changes
             item.properties["work_path_template"] = \
-                self.__workfiles_app.get_work_template(item.context)
+                self.__workfiles_app.get_work_template(item.context).name
 
         # Else if we're processing an item from a search path, set the work path on the item
         elif self.__work_path_template:
@@ -280,9 +290,11 @@ class MayaSessionCollector(HookBaseClass):
         # Now run the parent resolve method
         fields = super(MayaSessionCollector, self)._resolve_item_fields(item)
 
-        # If not already defined, set output field to the layer name
-        if "output" not in fields:
-            fields["output"] = item.properties.get("node")
+        node = item.properties.get("node")
+        if node:
+            # If not defined, set output field to the node name
+            if "output" not in fields:
+                fields["output"] = node
 
         return fields
 
