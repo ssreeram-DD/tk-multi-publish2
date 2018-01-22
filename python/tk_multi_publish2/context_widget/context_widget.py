@@ -670,21 +670,21 @@ class ContextWidget(QtGui.QWidget):
 
         # failed to query valid entity types for PublishedFile.entity field
         if task_id == self._schema_query_id:
-            logger.warn(
+            logger.warning(
                 "Unable to query valid entity types for PublishedFile.entity."
                 "Error Message: %s.\n%s" % (message, traceback_str)
             )
 
         # failed to query the current user's tasks
         elif task_id == self._my_tasks_query_id:
-            logger.warn(
+            logger.warning(
                 "Unable to query tasks for the current Shotgun user."
                 "Error Message: %s.\n%s" % (message, traceback_str)
             )
 
         # failed to query tasks related to the currently selected link
         elif task_id == self._related_tasks_query_id:
-            logger.warn(
+            logger.warning(
                 "Unable to related tasks for the selected entity link."
                 "Error Message: %s.\n%s" % (message, traceback_str)
             )
