@@ -294,11 +294,11 @@ class PublishFilesPlugin(HookBaseClass):
 
         if item.properties["is_sequence"]:
             if not item.properties["sequence_paths"]:
-                self.logger.warn("File sequence does not exist: %s" % item.properties["path"])
+                self.logger.warning("File sequence does not exist: %s" % item.properties["path"])
                 return False
         else:
             if not os.path.exists(item.properties["path"]):
-                self.logger.warn("File does not exist: %s" % item.properties["path"])
+                self.logger.warning("File does not exist: %s" % item.properties["path"])
                 return False
 
         # ---- validate the settings required to publish
@@ -339,7 +339,7 @@ class PublishFilesPlugin(HookBaseClass):
                 "be available to other users via the loader:<br>"
                 "<pre>%s</pre>" % (pprint.pformat(publishes),)
             )
-            self.logger.warn(
+            self.logger.warning(
                 "Found %s conflicting publishes in Shotgun" %
                     (len(publishes),),
                 extra={

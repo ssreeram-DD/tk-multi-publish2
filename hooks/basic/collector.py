@@ -250,7 +250,7 @@ class FileCollectorPlugin(HookBaseClass):
         # Make sure file(s) exist on disk
         if is_sequence:
             if not seq_files:
-                self.logger.warn(
+                self.logger.warning(
                     "File sequence does not exist for item: '%s'. Skipping" % display_name,
                     extra={
                         "action_show_more_info": {
@@ -263,7 +263,7 @@ class FileCollectorPlugin(HookBaseClass):
                 return
         else:
             if not os.path.exists(path):
-                self.logger.warn(
+                self.logger.warning(
                     "File does not exist for item: '%s'. Skipping" % display_name,
                     extra={
                         "action_show_more_info": {
@@ -299,7 +299,7 @@ class FileCollectorPlugin(HookBaseClass):
             file_items += filter(None, [self._add_file_item(parent_item, path, True, seq_files)])
 
         if not file_items:
-            self.logger.warn("No file sequences found in: %s" % (folder,))
+            self.logger.warning("No file sequences found in: %s" % (folder,))
 
         return file_items
 
@@ -543,7 +543,7 @@ class FileCollectorPlugin(HookBaseClass):
             # If path doesn't match this template, then we should accept this plugin
             tmpl_fields = tmpl.validate_and_get_fields(path)
             if not tmpl_fields:
-                self.logger.warn(
+                self.logger.warning(
                     "Path does not match template for item: %s" % (item.name),
                     extra={
                         "action_show_more_info": {

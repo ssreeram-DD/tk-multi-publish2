@@ -184,11 +184,11 @@ class ConformWorkFilesPlugin(HookBaseClass):
 
         if item.properties["is_sequence"]:
             if not item.properties["sequence_paths"]:
-                self.logger.warn("File sequence does not exist for item: %s" % item.name)
+                self.logger.warning("File sequence does not exist for item: %s" % item.name)
                 return False
         else:
             if not os.path.exists(path):
-                self.logger.warn("File does not exist for item: %s" % item.name)
+                self.logger.warning("File does not exist for item: %s" % item.name)
                 return False
 
         # ---- validate the settings required to publish
