@@ -34,9 +34,6 @@ class NukeSessionCollector(HookBaseClass):
         # call base init
         super(NukeSessionCollector, self).__init__(parent)
 
-        # ugh...this is hacky
-        self.__work_path_template = None
-
         # cache the write node and workfiles apps
         self.__write_node_app = self.parent.engine.apps.get("tk-nuke-writenode")
         self.__workfiles_app = self.parent.engine.apps.get("tk-multi-workfiles2")
@@ -49,6 +46,7 @@ class NukeSessionCollector(HookBaseClass):
 
         :param parent_item: Root item instance
         """
+        items = []
 
         publisher = self.parent
         engine = publisher.engine
@@ -65,7 +63,14 @@ class NukeSessionCollector(HookBaseClass):
             # under the session
             session_item = self.collect_current_nuke_session(parent_item)
 
-        self.collect_node_outputs(session_item)
+        # Add session_item to the list
+        items.append(session_item)
+
+        # Also collect any output node items
+        items.extend(self.collect_node_outputs(session_item))
+
+        # Return the list of items
+        return items
 
 
     def collect_current_nuke_session(self, parent_item):
@@ -151,6 +156,8 @@ class NukeSessionCollector(HookBaseClass):
                 session_item.expanded = False
                 session_item.checked = False
 
+        return session_item
+
 
     def collect_node_outputs(self, parent_item):
         """
@@ -159,6 +166,8 @@ class NukeSessionCollector(HookBaseClass):
 
         :param parent_item: The parent item for any write geo nodes collected
         """
+        items = []
+
         publisher = self.parent
 
         # iterate over all the known output types
@@ -193,23 +202,26 @@ class NukeSessionCollector(HookBaseClass):
                     thumbnail = None
 
                 # Call the parent _collect_file method
-                item = super(NukeSessionCollector, self)._collect_file(
-                    parent_item,
-                    file_path
-                )
+                item = self._collect_file(parent_item, file_path)
+                if not item:
+                    continue
 
                 # the item has been created. update the display name to include
                 # the nuke node to make it clear to the user how it was
                 # collected within the current session. also, prepend nukesession
                 # to the item type so we can process it by the nuke-specific publish
-                if item:
-                    item.name = "%s (%s)" % (item.name, node.name())
+                item.name = "%s (%s)" % (item.name, node.name())
 
-                    # Store a reference to the originating node
-                    item.properties["node"] = node
+                # Store a reference to the originating node
+                item.properties["node"] = node
 
-                    if thumbnail:
-                        item.set_thumbnail_from_path(thumbnail)
+                if thumbnail:
+                    item.set_thumbnail_from_path(thumbnail)
+
+                # Add item to the list
+                items.append(item)
+
+        return items
 
 
     def _resolve_item_fields(self, item):
@@ -234,10 +246,6 @@ class NukeSessionCollector(HookBaseClass):
             # since the path may change if the context changes
             item.properties["work_path_template"] = \
                 self.__workfiles_app.get_work_template(item.context).name
-
-        # Else if we're processing an item from a search path, set the work path on the item
-        elif self.__work_path_template:
-            item.properties["work_path_template"] = self.__work_path_template
 
         # Now run the parent resolve method
         fields = super(NukeSessionCollector, self)._resolve_item_fields(item)

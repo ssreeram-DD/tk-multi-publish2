@@ -173,7 +173,7 @@ class FileCollectorPlugin(HookBaseClass):
         :param parent_item: Root item instance
         """
         # default implementation does not do anything
-        pass
+        return []
 
 
     def process_file(self, parent_item, path):
@@ -366,9 +366,6 @@ class FileCollectorPlugin(HookBaseClass):
         # If defined, add the work_path_template to the item's properties
         if work_path_template:
             file_item.properties["work_path_template"] = work_path_template
-
-        # Set the item's fields property
-        file_item.properties["fields"] = self._resolve_item_fields(file_item)
 
         self.logger.info(
             "Collected item: %s" % display_name,
