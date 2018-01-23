@@ -92,6 +92,17 @@ class CreateVersionPlugin(HookBaseClass):
         schema["Item Type Filters"]["default_value"] = ["file.*.sequence"]
         return schema
 
+    def init_task_settings(self, task_settings, item):
+        """
+        Method called by the publisher to determine the initial settings for the
+        instantiated task.
+
+        :param task_settings: Instance of the plugin settings specific for this item
+        :param item: Item to process
+        :returns: dictionary of settings for this item's task
+        """
+        # Return the task settings
+        return task_settings
 
     def accept(self, task_settings, item):
         """
@@ -122,12 +133,26 @@ class CreateVersionPlugin(HookBaseClass):
 
         path = item.properties.get("path")
         if not path:
+            msg = "'path' property is not set for item: %s" % item.name
+            accept_data["extra_info"] = {
+                "action_show_more_info": {
+                    "label": "Show Info",
+                    "tooltip": "Show more info",
+                    "text": msg
+                }
+            }
             accept_data["accepted"] = False
             return accept_data
 
         if not self.__review_submission_app:
-            self.logger.warning("Unable to run %s without the "
-                    "tk-multi-reviewsubmission app!" % self.name)
+            msg = "Unable to run %s without the tk-multi-reviewsubmission app!" % self.name
+            accept_data["extra_info"] = {
+                "action_show_more_info": {
+                    "label": "Show Info",
+                    "tooltip": "Show more info",
+                    "text": msg
+                }
+            }
             accept_data["enabled"] = False
             accept_data["checked"] = False
             return accept_data
@@ -135,8 +160,15 @@ class CreateVersionPlugin(HookBaseClass):
         upload_to_shotgun = self.__review_submission_app.get_setting("upload_to_shotgun")
         store_on_disk = self.__review_submission_app.get_setting("store_on_disk")
         if not upload_to_shotgun and not store_on_disk:
-            self.logger.warning("tk-multi-reviewsubmission app is not configured "
-                    "to store images on disk nor upload to shotgun!")
+            msg = "tk-multi-reviewsubmission app is not configured to store " \
+                    + "images on disk nor upload to Shotgun!"
+            accept_data["extra_info"] = {
+                "action_show_more_info": {
+                    "label": "Show Info",
+                    "tooltip": "Show more info",
+                    "text": msg
+                }
+            }
             accept_data["enabled"] = False
             accept_data["checked"] = False
             return accept_data

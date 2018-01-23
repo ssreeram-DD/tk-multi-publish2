@@ -167,7 +167,7 @@ class MayaSessionCollector(HookBaseClass):
 
                 # the item has been created. update the display name to include
                 # the an indication of what it is and why it was collected
-                item.name = "%s (Render Layer: %s)" % (item.name, layer)
+                item.name = "Render Layer (%s)" % (layer,)
 
                 # Store the layer as the item node
                 item.properties["node"] = layer

@@ -269,6 +269,14 @@ class PublishFilesPlugin(HookBaseClass):
 
         path = item.properties.get("path")
         if not path:
+            msg = "'path' property is not set for item: %s" % item.name
+            accept_data["extra_info"] = {
+                "action_show_more_info": {
+                    "label": "Show Info",
+                    "tooltip": "Show more info",
+                    "text": msg
+                }
+            }
             accept_data["accepted"] = False
             return accept_data
 

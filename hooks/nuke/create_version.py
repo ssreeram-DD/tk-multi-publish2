@@ -20,62 +20,6 @@ class NukeCreateVersionPlugin(HookBaseClass):
     """
     Inherits from CreateVersionPlugin
     """
-    def __init__(self, parent):
-        """
-        Construction
-        """
-        # call base init
-        super(NukeCreateVersionPlugin, self).__init__(parent)
-        
-        # cache the write node app
-        self.__write_node_app = self.parent.engine.apps.get("tk-nuke-writenode")
-
-
-    def accept(self, task_settings, item):
-        """
-        Method called by the publisher to determine if an item is of any
-        interest to this plugin. Only items matching the filters defined via the
-        item_filters property will be presented to this method.
-
-        A publish task will be generated for each item accepted here. Returns a
-        dictionary with the following booleans:
-
-            - accepted: Indicates if the plugin is interested in this value at
-                all. Required.
-            - enabled: If True, the plugin will be enabled in the UI, otherwise
-                it will be disabled. Optional, True by default.
-            - visible: If True, the plugin will be visible in the UI, otherwise
-                it will be hidden. Optional, True by default.
-            - checked: If True, the plugin will be checked in the UI, otherwise
-                it will be unchecked. Optional, True by default.
-
-        :param item: Item to process
-
-        :returns: dictionary with boolean keys accepted, required and enabled
-        """
-
-        # Run the parent acceptance method
-        accept_data = super(NukeCreateVersionPlugin, self).accept(task_settings, item)
-        if not accept_data.get("accepted"):
-            return accept_data
-
-        # If this is a WriteTank node, override task settings from the node
-        node = item.properties.get("node")
-        if node and node.Class() == "WriteTank":
-            if not self.__write_node_app:
-                self.logger.error("Unable to process item '%s' without "
-                        "the tk-nuke_writenode app!" % item.name)
-                accept_data["enabled"] = False
-                accept_data["checked"] = False
-                return accept_data
-
-            # Overwrite the publish_path_template settings for this task
-            task_settings["publish_path_template"] = self.__write_node_app.get_node_publish_template(node).name
-
-        # return the accepted info
-        return accept_data
-
-
     ############################################################################
     # protected methods
 

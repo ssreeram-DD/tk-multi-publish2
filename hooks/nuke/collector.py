@@ -210,7 +210,7 @@ class NukeSessionCollector(HookBaseClass):
                 # the nuke node to make it clear to the user how it was
                 # collected within the current session. also, prepend nukesession
                 # to the item type so we can process it by the nuke-specific publish
-                item.name = "%s (%s)" % (item.name, node.name())
+                item.name = "%s (%s)" % (node.Class(), node.name())
 
                 # Store a reference to the originating node
                 item.properties["node"] = node

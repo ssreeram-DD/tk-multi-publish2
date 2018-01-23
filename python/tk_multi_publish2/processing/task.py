@@ -132,7 +132,7 @@ class Task(object):
 
             # log the acceptance and display any extra info from the plugin
             self.plugin.logger.info(
-                "Plugin: '%s' - Accepted %s" % (self.plugin.name, self.item.name),
+                "Plugin: '%s' - Accepted: %s" % (self.plugin.name, self.item.name),
                 extra=accept_data.get("extra_info")
             )
 
@@ -154,6 +154,10 @@ class Task(object):
 
         # Else disable and uncheck this task
         else:
+            self.plugin.logger.info(
+                "Plugin: '%s' - Rejected: %s" % (self.plugin.name, self.item.name),
+                extra=accept_data.get("extra_info")
+            )
             self._accepted = False
             self._enabled = False
             self._checked = False

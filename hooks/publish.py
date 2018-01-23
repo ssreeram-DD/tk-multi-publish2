@@ -129,11 +129,23 @@ class BasePublishPlugin(HookBaseClass):
 
         :returns: dictionary with boolean keys accepted, required and enabled
         """
+        accept_data = {}
+
         # Only accept this item if we have its task settings dict
         if not task_settings:
-            return { "accepted": False }
+            msg = "Unable to find task_settings for plugin: %s" % self.name
+            accept_data["extra_info"] = {
+                "action_show_more_info": {
+                    "label": "Show Info",
+                    "tooltip": "Show more info",
+                    "text": msg
+                }
+            }
+            accept_data["accepted"] = False
+        else:
+            accept_data["accepted"] = True
 
-        return { "accepted": True }
+        return accept_data
 
     def validate(self, task_settings, item):
         """
