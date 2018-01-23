@@ -462,7 +462,7 @@ class PublishPlugin(PluginBase):
         :return: True if validation passed, False otherwise.
         """
         # check that we are not trying to publish to a site level context
-        if item.context.task is None:
+        if item.context.project is None:
             status = False
             self._logger.error("Please link '%s' to a Shotgun entity and task!" % item.name)
         else:
