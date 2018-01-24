@@ -528,18 +528,40 @@ class FileCollectorPlugin(HookBaseClass):
 
         fields = {}
 
-        # If there is a work template, first attempt to get fields from parsing the path
+        # First check if a work_path_template has been defined
         work_path_template = item.properties.get("work_path_template")
         if work_path_template:
-
-            tmpl = publisher.get_template_by_name(work_path_template)
-            if not tmpl:
+            work_tmpl = publisher.get_template_by_name(work_path_template)
+            if not work_tmpl:
                 # this template was not found in the template config!
                 raise TankError("The Template '%s' does not exist!" % work_path_template)
 
-            # If path doesn't match this template, then we should accept this plugin
-            tmpl_fields = tmpl.validate_and_get_fields(path)
-            if not tmpl_fields:
+        # Else see if the path matches an existing template
+        else:
+            # Note that this needs to happen after the context has been set
+            work_tmpl = self.sgtk.template_from_path(path)
+            if not work_tmpl:
+                self.logger.warning(
+                    "Path does not match template for item: %s" % (item.name)
+                )
+
+        # If there is a work template, first attempt to get fields from parsing the path
+        if work_tmpl:
+            tmpl_fields = work_tmpl.validate_and_get_fields(path)
+            if tmpl_fields:
+                self.logger.info(
+                    "Parsed path using template '%s' for item: %s" % (work_tmpl.name, item.name),
+                    extra={
+                        "action_show_more_info": {
+                            "label": "Show Info",
+                            "tooltip": "Show more info",
+                            "text": "Path parsed by template '%s': %s\nResulting fields:\n%s" %
+                            (work_path_template, path, pprint.pformat(tmpl_fields))
+                        }
+                    }
+                )
+                fields.update(tmpl_fields)
+            else:
                 self.logger.warning(
                     "Path does not match template for item: %s" % (item.name),
                     extra={
@@ -551,8 +573,6 @@ class FileCollectorPlugin(HookBaseClass):
                         }
                     }
                 )
-            else:
-                fields.update(tmpl_fields)
 
         # If not already populated, first attempt to get the width and height
         if "width" not in fields or "height" not in fields:
