@@ -297,9 +297,11 @@ class MayaSessionCollector(HookBaseClass):
 
         node = item.properties.get("node")
         if node:
-            # If not defined, set output field to the node name
+            # If not defined, set output field to the token stored on the node
             if "output" not in fields:
-                fields["output"] = node
+                output_name = cmds.getAttr("%s.sgtk_templatekey_output" % node, asString=True)
+                if output_name:
+                    fields["output"] = output_name
 
         return fields
 
