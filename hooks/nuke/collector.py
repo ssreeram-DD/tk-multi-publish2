@@ -180,6 +180,10 @@ class NukeSessionCollector(HookBaseClass):
             # iterate over each instance
             for node in all_nodes_of_type:
 
+                # Skip the node if its disabled
+                if node["disable"].value():
+                    continue
+
                 self.logger.info(
                     "Processing %s node: %s" % (node_type, node.name()))
 
@@ -255,9 +259,6 @@ class NukeSessionCollector(HookBaseClass):
             if "width" not in fields or "height" not in fields:
                 fields["width"] = node.width()
                 fields["height"] = node.height()
-            # If not defined, set output field to the node name
-            if "output" not in fields:
-                fields["output"] = node.name()
 
         return fields
 
