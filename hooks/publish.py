@@ -10,6 +10,7 @@
 
 import os
 import traceback
+import pprint
 import sgtk
 from sgtk.util.filesystem import copy_file, ensure_folder_exists
 
@@ -105,6 +106,19 @@ class BasePublishPlugin(HookBaseClass):
         :returns: dictionary of settings for this item's task
         """
         # Return the item-type specific settings
+        if item.type not in task_settings["Item Type Settings"].value:
+            msg = "Key: %s\n%s" % (item.type, pprint.pformat(task_settings["Item Type Settings"].value))
+            self.logger.warning(
+                "'Item Type Settings' are missing for item type: '%s'" % item.type,
+                extra={
+                    "action_show_more_info": {
+                        "label": "Show Info",
+                        "tooltip": "Show more info",
+                        "text": msg
+                    }
+                }
+            )
+            return None
         return task_settings["Item Type Settings"].value.get(item.type)
 
     def accept(self, task_settings, item):

@@ -426,11 +426,21 @@ class FileCollectorPlugin(HookBaseClass):
 
             if extension in type_info["extensions"]:
                 # found the extension in the common types lookup. extract the
-                # item type, icon name.
+                # type_display, icon path, and optional work_path_template.
                 type_display = type_info["type_display"]
                 icon_path = type_info["icon"]
                 work_path_template = type_info.get("work_path_template")
                 common_type_found = True
+
+                # If we are dealing with a sequence, first check if we have a
+                # separate definition for a sequence of this type specifically,
+                # and if so, use that instead.
+                if is_sequence and not item_type.endswith(".sequence"):
+                    tmp_type = "%s.%s" % (item_type, "sequence")
+                    if tmp_type in self.settings["Item Types"].value:
+                        continue
+
+                # Otherwise, we've found our match
                 break
 
         if not common_type_found:
@@ -464,7 +474,8 @@ class FileCollectorPlugin(HookBaseClass):
             # if the supplied image path is part of a sequence. alter the
             # type info to account for this.
             type_display = "%s Sequence" % (type_display,)
-            item_type = "%s.%s" % (item_type, "sequence")
+            if not item_type.endswith(".sequence"):
+                item_type = "%s.%s" % (item_type, "sequence")
             icon_path = "{self}/hooks/icons/image_sequence.png"
 
         # everything should be populated. return the dictionary
@@ -534,7 +545,7 @@ class FileCollectorPlugin(HookBaseClass):
             work_tmpl = publisher.get_template_by_name(work_path_template)
             if not work_tmpl:
                 # this template was not found in the template config!
-                raise TankError("The Template '%s' does not exist!" % work_path_template)
+                raise TankError("The template '%s' does not exist!" % work_path_template)
 
         # Else see if the path matches an existing template
         else:
@@ -542,7 +553,7 @@ class FileCollectorPlugin(HookBaseClass):
             work_tmpl = self.sgtk.template_from_path(path)
             if not work_tmpl:
                 self.logger.warning(
-                    "Path does not match template for item: %s" % (item.name)
+                    "Cannot find a matching template for item: %s" % (item.name)
                 )
 
         # If there is a work template, first attempt to get fields from parsing the path
