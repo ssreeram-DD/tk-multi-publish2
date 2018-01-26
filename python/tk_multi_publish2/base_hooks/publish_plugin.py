@@ -489,6 +489,7 @@ class PublishPlugin(PluginBase):
         # description in a label.
         description_label = QtGui.QLabel(self.description)
         description_label.setWordWrap(True)
+        description_label.setOpenExternalLinks(True)
 
         # create the layout to use within the group box
         description_layout = QtGui.QVBoxLayout()
