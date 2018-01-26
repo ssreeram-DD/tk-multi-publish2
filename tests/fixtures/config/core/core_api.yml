@@ -1,4 +1,4 @@
-# Copyright (c) 2017 Shotgun Software Inc.
+# Copyright (c) 2016 Shotgun Software Inc.
 #
 # CONFIDENTIAL AND PROPRIETARY
 #
@@ -8,6 +8,10 @@
 # agreement to the Shotgun Pipeline Toolkit Source Code License. All rights
 # not expressly granted therein are reserved by Shotgun Software Inc.
 
-from .base import PluginBase
-from .collector import CollectorPlugin
-from .publish_plugin import PublishPlugin
+# this configuration file defines which version of the toolkit
+# core API that should be used at runtime.
+
+location:
+  type: app_store
+  name: tk-core
+  version: v0.18.121
