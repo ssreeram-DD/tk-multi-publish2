@@ -215,9 +215,9 @@ class CreateVersionPlugin(HookBaseClass):
         :param item: Item to process
         """
 
-        sg_publish_data = None
+        sg_publish_data = []
         if "sg_publish_data" in item.properties:
-            sg_publish_data = item.properties["sg_publish_data"]
+            sg_publish_data.append(item.properties["sg_publish_data"])
 
         colorspace = self._get_colorspace(task_settings, item)
         first_frame, last_frame = self._get_frame_range(task_settings, item)
@@ -233,7 +233,7 @@ class CreateVersionPlugin(HookBaseClass):
             fields,
             first_frame,
             last_frame,
-            [sg_publish_data],
+            sg_publish_data,
             item.context.task,
             item.description,
             item.get_thumbnail_as_path(),
