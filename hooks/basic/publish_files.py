@@ -171,29 +171,17 @@ class PublishFilesPlugin(HookBaseClass):
         loader_url = "https://support.shotgunsoftware.com/hc/en-us/articles/219033078"
 
         return """
-        Publishes the file to Shotgun. A <b>Publish</b> entry will be
-        created in Shotgun which will include a reference to the file's current
-        path on disk. Other users will be able to access the published file via
-        the <b><a href='%s'>Loader</a></b> so long as they have access to
-        the file's location on disk.
-
-        <h3>File versioning</h3>
-        The <code>version</code> field of the resulting <b>Publish</b> in
-        Shotgun will also reflect the version number identified in the filename.
-        The basic workflow recognizes the following version formats by default:
-
-        <ul>
-        <li><code>filename.v###.ext</code></li>
-        <li><code>filename_v###.ext</code></li>
-        <li><code>filename-v###.ext</code></li>
-        </ul>
-
-        <br><br><i>NOTE: any amount of version number padding is supported.</i>
+        Publishes the file to the specified <b>Publish Path</b> location and
+        creates a <b>PublishedFile</b> entity in Shotgun, which will include a
+        reference to the file's published path on disk. Other users will be able
+        to access the published file via the <b><a href='%s'>Loader</a></b> so
+        long as they have access to the file's location on disk.
 
         <h3>Overwriting an existing publish</h3>
-        A file can be published multiple times however only the most recent
-        publish will be available to other users. Warnings will be provided
-        during validation if there are previous publishes.
+        Since all publishes are made immediately available to all consumers, a
+        publish <b>cannot</b> be overwritten once it has been created. This is
+        to ensure consistency and reproducibility for any consumers of the
+        publish, such as downstream users or processes.
         """ % (loader_url,)
 
     @property
