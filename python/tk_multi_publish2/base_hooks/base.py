@@ -21,7 +21,7 @@ class PluginBase(HookBaseClass):
         Construction
         """
         # call base init
-        super(BasePlugin, self).__init__(parent)
+        super(PluginBase, self).__init__(parent)
 
         # initialize settings
         self.__settings = None
