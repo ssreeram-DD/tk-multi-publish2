@@ -404,7 +404,8 @@ class PublishTreeWidget(QtGui.QTreeWidget):
             for child_index in xrange(parent.childCount()):
                 child = parent.child(child_index)
                 if isinstance(child, TreeNodeTask):
-                    child.update()
+                    child.set_check_state(child.task.checked)
+                    child.set_check_enabled(child.task.enabled)
                 _check_r(child)
         _check_r(item)
 

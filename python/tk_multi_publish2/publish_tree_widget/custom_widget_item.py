@@ -51,6 +51,7 @@ class CustomTreeWidgetItem(CustomTreeWidgetBase):
         self.ui.handle_stack.hide()
 
         self.ui.checkbox.stateChanged.connect(self._on_checkbox_click)
+        self.ui.checkbox.setTristate(True)
         self.ui.checkbox.nextCheckState = self.nextCheckState
         self.ui.status.clicked.connect(self._on_status_click)
 
@@ -60,8 +61,13 @@ class CustomTreeWidgetItem(CustomTreeWidgetBase):
         """
         # QT tri-state logic is a little odd, see the docs for more
         # details.
-        self.ui.checkbox.setChecked(not self.ui.checkbox.isChecked())
-        self._tree_node.set_check_state(self.ui.checkbox.checkState())
+        state = self.ui.checkbox.checkState()
+        if state == QtCore.Qt.Checked:
+            self.ui.checkbox.setCheckState(QtCore.Qt.Unchecked)
+        elif state == QtCore.Qt.PartiallyChecked:
+            self.ui.checkbox.setCheckState(QtCore.Qt.Unchecked)
+        else:
+            self.ui.checkbox.setCheckState(QtCore.Qt.Checked)
 
     def _on_checkbox_click(self, state):
         """

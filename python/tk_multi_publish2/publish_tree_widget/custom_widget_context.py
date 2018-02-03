@@ -32,7 +32,29 @@ class CustomTreeWidgetContext(CustomTreeWidgetBase):
         # set up the UI
         self.ui = Ui_ContextWidget()
         self.ui.setupUi(self)
-        self.ui.checkbox.clicked.connect(self._on_checkbox_clicked_manually)
+        self.ui.checkbox.stateChanged.connect(self._on_checkbox_click)
+        self.ui.checkbox.setTristate(True)
+        self.ui.checkbox.nextCheckState = self.nextCheckState
+
+    def nextCheckState(self):
+        """
+        Callback that handles QT tri-state logic
+        """
+        # QT tri-state logic is a little odd, see the docs for more
+        # details.
+        state = self.ui.checkbox.checkState()
+        if state == QtCore.Qt.Checked:
+            self.ui.checkbox.setCheckState(QtCore.Qt.Unchecked)
+        elif state == QtCore.Qt.PartiallyChecked:
+            self.ui.checkbox.setCheckState(QtCore.Qt.Unchecked)
+        else:
+            self.ui.checkbox.setCheckState(QtCore.Qt.Checked)
+
+    def _on_checkbox_click(self, state):
+        """
+        Callback that fires when the user clicks the checkbox
+        """
+        self._tree_node.set_check_state(state)
 
     @property
     def icon(self):
@@ -56,23 +78,3 @@ class CustomTreeWidgetContext(CustomTreeWidgetBase):
             status constants defined by the class
         """
         pass
-
-    def _on_checkbox_clicked_manually(self):
-        """
-        Callback that fires when the user clicks the checkbox
-        """
-
-        # the stateChanged signal is emitted before clicked() signal, which means
-        # that the value of checkState() below is the one after the user clicks the checkbox
-        state = self.ui.checkbox.checkState()
-
-        # When user clicks a context checkbox, we want it to choose between selecting all children 
-        # and unselecting all children, so 2 states.
-        # when user clicks on the checkbox of a child of the context, we have the possibility that some children are 
-        # selected, and others are not. In this case we need the QtCore.Qt.PartiallyChecked state. So 3 states... but this case is
-        # covered by underlying classes
-        if state != QtCore.Qt.PartiallyChecked:
-           self._tree_node.set_check_state(state)
-        else:
-           self.ui.checkbox.animateClick()
-  
