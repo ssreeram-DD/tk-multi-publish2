@@ -183,7 +183,9 @@ class MayaPublishGeometryPlugin(HookBaseClass):
             ensure_folder_exists(publish_folder)
 
             publisher.log_debug("Executing command: %s" % abc_export_cmd)
+            cmds.refresh(suspend=True)
             mel.eval(abc_export_cmd)
+            cmds.refresh(suspend=False)
         except Exception as e:
             raise Exception("Failed to export Geometry: %s" % e)
 
