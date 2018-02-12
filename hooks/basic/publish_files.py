@@ -223,6 +223,17 @@ class PublishFilesPlugin(HookBaseClass):
                 "fields": ["context", "*"],
                 "allows_empty": True,
             },
+            "additional_publish_fields": {
+                "type": "dict",
+                "values": {
+                    "type": "str",
+                },
+                "default_value": {"name": "sg_element", "output": "sg_output"},
+                "description": (
+                    "Dictionary of template_key/sg_field pairs to populate on "
+                    "the PublishedFile entity."
+                )
+            }
         }
         return schema
 
@@ -387,7 +398,8 @@ class PublishFilesPlugin(HookBaseClass):
                 "action_show_more_info": {
                     "label": "Show Info",
                     "tooltip": "Show more info",
-                    "text": "Publish Path: %s" % (item.properties["publish_path"],)
+                    "text": "Publish Name: %s" % (item.properties["publish_name"],) + "\n" +
+                            "Publish Path: %s" % (item.properties["publish_path"],)
                 }
             }
         )
@@ -422,6 +434,13 @@ class PublishFilesPlugin(HookBaseClass):
         if "sg_publish_path" in item.parent.properties:
             dependency_paths.append(item.parent.properties["sg_publish_path"])
 
+        # get any additional_publish_fields that have been defined
+        sg_fields = {}
+        additional_fields = task_settings.get("additional_publish_fields", {})
+        for template_key, sg_field in additional_fields.iteritems():
+            if template_key in item.properties["fields"]:
+                sg_fields[sg_field] = item.properties["fields"][template_key]
+
         # arguments for publish registration
         self.logger.info("Registering publish...")
         publish_data= {
@@ -433,7 +452,8 @@ class PublishFilesPlugin(HookBaseClass):
             "version_number": publish_version,
             "thumbnail_path": item.get_thumbnail_as_path() or "",
             "published_file_type": publish_type,
-            "dependency_paths": dependency_paths
+            "dependency_paths": dependency_paths,
+            "sg_fields": sg_fields
         }
 
         # log the publish data for debugging
