@@ -320,12 +320,28 @@ class FileCollectorPlugin(HookBaseClass):
 
         display_name = publisher.util.get_publish_name(path)
 
+        # Define the item's properties
+        properties = {}
+
+        # set the path and is_sequence properties for the plugins to use
+        properties["path"] = path
+        properties["is_sequence"] = is_sequence
+
+        # If a sequence, add the sequence path
+        if is_sequence:
+            properties["sequence_paths"] = seq_files
+
+        # If defined, add the work_path_template to the item's properties
+        if work_path_template:
+            properties["work_path_template"] = work_path_template
+
         # create and populate the item
         file_item = parent_item.create_item(
             item_type,
             type_display,
             display_name,
-            self
+            collector=self,
+            properties=properties
         )
 
         # Set the icon path
@@ -344,15 +360,9 @@ class FileCollectorPlugin(HookBaseClass):
             # disable thumbnail creation since we get it for free
             file_item.thumbnail_enabled = False
 
-        # all we know about the file is its path. set the path in its
-        # properties for the plugins to use for processing.
-        file_item.properties["path"] = path
-
-        file_item.properties["is_sequence"] = is_sequence
         if is_sequence:
             # include an indicator that this is an image sequence and the known
             # file that belongs to this sequence
-            file_item.properties["sequence_paths"] = seq_files
             file_info = (
                 "The following files were collected:<br>"
                 "<pre>%s</pre>" % (pprint.pformat(seq_files),)
@@ -362,10 +372,6 @@ class FileCollectorPlugin(HookBaseClass):
                 "The following file was collected:<br>"
                 "<pre>%s</pre>" % (path,)
             )
-
-        # If defined, add the work_path_template to the item's properties
-        if work_path_template:
-            file_item.properties["work_path_template"] = work_path_template
 
         self.logger.info(
             "Collected item: %s" % display_name,

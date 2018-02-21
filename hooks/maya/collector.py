@@ -184,11 +184,15 @@ class MayaSessionCollector(HookBaseClass):
 
         :param parent_item: Parent Item instance
         """
+        # Copy the parent session's properties
+        properties = copy.deepcopy(parent_item.properties)
+
         geo_item = parent_item.create_item(
             "maya.geometry",
             "Geometry",
             "Maya Session Geometry",
-            self
+            collector=self,
+            properties=properties
         )
 
         # get the icon path to display for this item
@@ -200,9 +204,6 @@ class MayaSessionCollector(HookBaseClass):
         )
 
         geo_item.set_icon_from_path(icon_path)
-
-        # Copy the parent session's properties
-        geo_item.properties = copy.deepcopy(parent_item.properties)
 
         self.logger.info("Collected item: Maya Session Geometry")
         return [geo_item]

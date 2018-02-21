@@ -28,7 +28,7 @@ class Item(object):
     Items are organized as a tree with access to parent and children.
     """
 
-    def __init__(self, item_type, display_type, name, parent, collector):
+    def __init__(self, item_type, display_type, name, parent, collector, properties):
         """
         Initialize an item. Should never be called.
 
@@ -49,7 +49,7 @@ class Item(object):
         self._children = []
         self._tasks = []
         self._context = None
-        self._properties = {}
+        self._properties = properties or {}
         self._description = None
         self._created_temp_files = []
         self._bundle = sgtk.platform.current_bundle()
@@ -60,6 +60,10 @@ class Item(object):
         self._allows_context_change = True
         # the following var indicates that the current thumbnail overrides the summary one
         self._thumbnail_explicit = True
+
+        # If a parent exists, set the initial context to the parent's context
+        if self._parent:
+            self.context = self._parent.context
 
     def __repr__(self):
         """
@@ -93,7 +97,7 @@ class Item(object):
 
         :returns: :class:`Item`
         """
-        return Item("_root", "_root", "_root", parent=None, collector=None)
+        return Item("_root", "_root", "_root", parent=None, collector=None, properties=None)
 
     def remove_item(self, item):
         """
@@ -113,7 +117,7 @@ class Item(object):
         """
         return self.parent is None
 
-    def create_item(self, item_type, display_type, name, collector=None):
+    def create_item(self, item_type, display_type, name, collector=None, properties=None):
         """
         Factory method for generating new items.
 
@@ -168,7 +172,7 @@ class Item(object):
         :param str name: The name to represent the item in a UI. This can be a
             node name in a DCC or a file name.
         """
-        child_item = Item(item_type, display_type, name, parent=self, collector=collector)
+        child_item = Item(item_type, display_type, name, parent=self, collector=collector, properties=properties)
         self._children.append(child_item)
         child_item._parent = self
         logger.debug("Created %s" % child_item)
@@ -212,13 +216,6 @@ class Item(object):
         may be useful to plugin attached to child items.
         """
         return self._properties
-
-    @properties.setter
-    def properties(self, properties):
-        """
-        Properties setter
-        """
-        self._properties = dict(properties)
 
     @property
     def tasks(self):

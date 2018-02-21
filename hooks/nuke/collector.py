@@ -134,7 +134,7 @@ class NukeSessionCollector(HookBaseClass):
                 "file.nukestudio",
                 "NukeStudio Project",
                 project.name(),
-                self
+                collector=self
             )
             session_item.set_icon_from_path(icon_path)
 

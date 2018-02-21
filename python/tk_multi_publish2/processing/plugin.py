@@ -591,11 +591,7 @@ class CollectorPlugin(PluginBase):
         :returns: None (item creation handles parenting)
         """
         try:
-            child_items = self._hook_instance.process_current_session(item)
-            for item in child_items:
-                # Run the item initialization for the current context
-                self._hook_instance.on_context_changed(item)
-            return child_items
+            return self._hook_instance.process_current_session(item)
         except Exception:
             error_msg = traceback.format_exc()
             self._logger.error(
@@ -617,11 +613,7 @@ class CollectorPlugin(PluginBase):
         :returns: None (item creation handles parenting)
         """
         try:
-            child_items = self._hook_instance.process_file(item, path)
-            for item in child_items:
-                # Run the item initialization for the current context
-                self._hook_instance.on_context_changed(item)
-            return child_items
+            return self._hook_instance.process_file(item, path)
         except Exception:
             error_msg = traceback.format_exc()
             self._logger.error(
