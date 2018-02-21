@@ -12,6 +12,8 @@ import os
 import sgtk
 import tempfile
 
+from .setting import *
+
 logger = sgtk.platform.get_logger(__name__)
 
 
@@ -338,7 +340,18 @@ class Item(object):
         """
         # Run callback for re-initializing the item
         if self.collector:
-            self.collector.on_context_changed(self)
+
+            # Check the cache to see if we already have setting for this plugin/context pair
+            settings = settings_cache.get(self.collector, context)
+            if not settings:
+                # If they aren't in the cache, then go get the settings for this context
+                settings = self.collector.build_settings_dict(context)
+
+                # Add them to the cache
+                settings_cache.add(self.collector, context, settings)
+
+            # Update the item's properties for the new context
+            self.collector.run_on_context_changed(settings, self)
 
         for task in self.tasks:
             # Get the updated task settings

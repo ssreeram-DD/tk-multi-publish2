@@ -26,12 +26,12 @@ class NukeConformWorkFilesPlugin(HookBaseClass):
     """
     Inherits from ConformWorkFilesPlugin
     """
-    def __init__(self, parent):
+    def __init__(self, parent, **kwargs):
         """
         Construction
         """
         # call base init
-        super(NukeConformWorkFilesPlugin, self).__init__(parent)
+        super(NukeConformWorkFilesPlugin, self).__init__(parent, **kwargs)
 
         # cache the write node app
         self.__write_node_app = self.parent.engine.apps.get("tk-nuke-writenode")

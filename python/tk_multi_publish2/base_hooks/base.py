@@ -16,15 +16,15 @@ class PluginBase(HookBaseClass):
     """
     Base Plugin class.
     """
-    def __init__(self, parent):
+    def __init__(self, parent, plugin=None, **kwargs):
         """
         Construction
         """
         # call base init
-        super(PluginBase, self).__init__(parent)
+        super(PluginBase, self).__init__(parent, **kwargs)
 
-        # initialize settings
-        self.__settings = None
+        # initialize plugin
+        self.__plugin = plugin
 
     @property
     def settings_schema(self):
@@ -48,15 +48,8 @@ class PluginBase(HookBaseClass):
         raise NotImplementedError
 
     @property
-    def settings(self):
+    def plugin(self):
         """
-        Dictionary of Settings. The keys are strings, matching
-        the keys returned in the settings property. The values are `Setting`
-        instances.
+        A reference to the parent Plugin class that instantiated this hook.
         """
-        return self.__settings
-
-    @settings.setter
-    def settings(self, settings):
-        # setter for value
-        self.__settings = settings
+        return self.__plugin

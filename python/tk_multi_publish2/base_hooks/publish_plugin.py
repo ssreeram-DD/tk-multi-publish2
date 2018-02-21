@@ -228,7 +228,7 @@ class PublishPlugin(PluginBase):
         Strings can contain glob patters such as ``*``, for example ``["maya.*",
         "file.maya"]``.
         """
-        return self.settings["Item Type Filters"].value
+        return self.plugin.settings["Item Type Filters"].value
 
     ############################################################################
     # Publish processing methods

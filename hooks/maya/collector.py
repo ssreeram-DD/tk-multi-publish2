@@ -26,12 +26,12 @@ class MayaSessionCollector(HookBaseClass):
     Collector that operates on the current maya session. Should
     inherit from the basic collector hook.
     """
-    def __init__(self, parent):
+    def __init__(self, parent, **kwargs):
         """
         Construction
         """
         # call base init
-        super(MayaSessionCollector, self).__init__(parent)
+        super(MayaSessionCollector, self).__init__(parent, **kwargs)
 
         # cache the workfiles app
         self.__workfiles_app = self.parent.engine.apps.get("tk-multi-workfiles2")
@@ -71,40 +71,42 @@ class MayaSessionCollector(HookBaseClass):
         return schema
 
 
-    def process_current_session(self, parent_item):
+    def process_current_session(self, settings, parent_item):
         """
         Analyzes the current session open in Maya and parents a
         subtree of items under the parent_item passed in.
 
+        :param dict settings: Configured settings for this collector
         :param parent_item: Root item instance
         """
         items = []
 
         # create an item representing the current maya session
-        session_item = self.collect_current_maya_session(parent_item)
+        session_item = self.collect_current_maya_session(settings, parent_item)
         if session_item:
             items.append(session_item)
 
         # look at the render layers to find rendered images on disk
-        items.extend(self.collect_rendered_images(session_item))
+        items.extend(self.collect_rendered_images(settings, session_item))
 
         # collect any scene geometry
         if cmds.ls(geometry=True, noIntermediate=True):
-            items.extend(self.collect_session_geometry(session_item))
+            items.extend(self.collect_session_geometry(settings, session_item))
 
         # if we have work path templates, collect matching files to publish
-        for work_template in self.settings["Work File Templates"].value:
-            items.extend(self.collect_work_files(session_item, work_template))
+        for work_template in settings["Work File Templates"].value:
+            items.extend(self.collect_work_files(settings, session_item, work_template))
 
         # Return the list of items
         return items
 
 
-    def collect_current_maya_session(self, parent_item):
+    def collect_current_maya_session(self, settings, parent_item):
         """
         Analyzes the current session open in Maya and parents a subtree of items
         under the parent_item passed in.
 
+        :param dict settings: Configured settings for this collector
         :param parent_item: Root item instance
         """
         # get the current path
@@ -118,7 +120,7 @@ class MayaSessionCollector(HookBaseClass):
                 extra=self._get_save_as_action()
             )
 
-        session_item = self._add_file_item(parent_item, file_path)
+        session_item = self._add_file_item(settings, parent_item, file_path)
 
         if session_item:
             session_item.name = "Current Maya Session"
@@ -131,11 +133,12 @@ class MayaSessionCollector(HookBaseClass):
         return session_item
 
 
-    def collect_rendered_images(self, parent_item):
+    def collect_rendered_images(self, settings, parent_item):
         """
         Creates items for any rendered images that can be identified by
         render layers in the file.
 
+        :param dict settings: Configured settings for this collector
         :param parent_item: Parent Item instance
         :return:
         """
@@ -161,7 +164,7 @@ class MayaSessionCollector(HookBaseClass):
             if rendered_paths:
                 # we only need one path to publish, so take the first one and
                 # let the base class collector handle it
-                item = self._collect_file(parent_item, rendered_paths[0])
+                item = self._collect_file(settings, parent_item, rendered_paths[0])
                 if not item:
                     continue
 
@@ -178,10 +181,11 @@ class MayaSessionCollector(HookBaseClass):
         return items
 
 
-    def collect_session_geometry(self, parent_item):
+    def collect_session_geometry(self, settings, parent_item):
         """
         Creates items for session geometry to be exported.
 
+        :param dict settings: Configured settings for this collector
         :param parent_item: Parent Item instance
         """
         # Copy the parent session's properties
@@ -191,7 +195,7 @@ class MayaSessionCollector(HookBaseClass):
             "maya.geometry",
             "Geometry",
             "Maya Session Geometry",
-            collector=self,
+            collector=self.plugin,
             properties=properties
         )
 
@@ -209,7 +213,7 @@ class MayaSessionCollector(HookBaseClass):
         return [geo_item]
 
 
-    def collect_work_files(self, parent_item, work_template):
+    def collect_work_files(self, settings, parent_item, work_template):
         """
         Creates items for files matching the work path template
         """
@@ -217,7 +221,7 @@ class MayaSessionCollector(HookBaseClass):
         try:
             work_paths = self._get_work_paths(parent_item, work_template)
             for work_path in work_paths:
-                item = self._collect_file(parent_item, work_path)
+                item = self._collect_file(settings, parent_item, work_path)
                 if not item:
                     continue
 
@@ -249,8 +253,9 @@ class MayaSessionCollector(HookBaseClass):
 
         publisher = self.parent
 
-        # Start with the item's fields
+        # Start with the item's fields, minus extension
         fields = copy.deepcopy(parent_item.properties.get("fields", {}))
+        fields.pop("extension")
 
         work_tmpl = publisher.get_template_by_name(work_path_template)
         if not work_tmpl:

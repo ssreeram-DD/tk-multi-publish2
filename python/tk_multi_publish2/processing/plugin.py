@@ -64,10 +64,6 @@ class PluginBase(object):
         # add settings to cache
         settings_cache.add(self, self._bundle.context, self._settings)
 
-        # pass the settings dict to the hook
-        if hasattr(self._hook_instance.__class__, "settings"):
-            self._hook_instance.settings = self._settings
-
     def _create_hook_instance(self, path):
         """
         Create the plugin's hook instance.
@@ -77,7 +73,8 @@ class PluginBase(object):
         """
         return self._bundle.create_hook_instance(
             path,
-            base_class=self._bundle.base_hooks.PluginBase
+            base_class=self._bundle.base_hooks.PluginBase,
+            plugin=self
         )
 
     def __repr__(self):
@@ -217,6 +214,38 @@ class PluginBase(object):
 
         return resolved_settings
 
+    @contextmanager
+    def _handle_plugin_error(self, success_msg, error_msg):
+        """
+        Creates a scope that will properly handle any error raised by the plugin
+        while the scope is executed.
+
+        .. note::
+            Any exception raised by the plugin is bubbled up to the caller.
+
+        :param str success_msg: Message to be displayed if there is no error.
+        :param str error_msg: Message to be displayed if there is an error.
+        """
+
+        try:
+            # Execute's the code inside the with statement. Any errors will be
+            # caught and logged and the events will be processed
+            yield
+        except Exception as e:
+            exception_msg = traceback.format_exc()
+            self._logger.error(
+                error_msg % (e,),
+                extra=_get_error_extra_info(exception_msg)
+            )
+            raise
+        else:
+            if success_msg:
+                self._logger.info(success_msg)
+        finally:
+            # TODO: this needs to be refactored. should be no UI stuff here
+            from sgtk.platform.qt import QtCore
+            QtCore.QCoreApplication.processEvents()
+
 
 class PublishPlugin(PluginBase):
     """
@@ -250,7 +279,8 @@ class PublishPlugin(PluginBase):
         """
         return self._bundle.create_hook_instance(
             path,
-            base_class=self._bundle.base_hooks.PublishPlugin
+            base_class=self._bundle.base_hooks.PublishPlugin,
+            plugin=self
         )
 
     def _load_plugin_icon(self):
@@ -427,7 +457,6 @@ class PublishPlugin(PluginBase):
         with self._handle_plugin_error(None, "Error writing settings to UI: %s"):
             self._hook_instance.set_ui_settings(parent, settings)
 
-
     def init_task_settings(self, item, context):
         """
         Initializes an instance of this plugin's settings for the item's context,
@@ -530,38 +559,6 @@ class PublishPlugin(PluginBase):
         with self._handle_plugin_error("Finalize complete!", "Error finalizing: %s"):
             self._hook_instance.finalize(task_settings, item)
 
-    @contextmanager
-    def _handle_plugin_error(self, success_msg, error_msg):
-        """
-        Creates a scope that will properly handle any error raised by the plugin
-        while the scope is executed.
-
-        .. note::
-            Any exception raised by the plugin is bubbled up to the caller.
-
-        :param str success_msg: Message to be displayed if there is no error.
-        :param str error_msg: Message to be displayed if there is an error.
-        """
-
-        try:
-            # Execute's the code inside the with statement. Any errors will be
-            # caught and logged and the events will be processed
-            yield
-        except Exception as e:
-            exception_msg = traceback.format_exc()
-            self._logger.error(
-                error_msg % (e,),
-                extra=_get_error_extra_info(exception_msg)
-            )
-            raise
-        else:
-            if success_msg:
-                self._logger.info(success_msg)
-        finally:
-            # TODO: this needs to be refactored. should be no UI stuff here
-            from sgtk.platform.qt import QtCore
-            QtCore.QCoreApplication.processEvents()
-
 
 class CollectorPlugin(PluginBase):
     """
@@ -579,7 +576,8 @@ class CollectorPlugin(PluginBase):
         """
         return self._bundle.create_hook_instance(
             path,
-            base_class=self._bundle.base_hooks.CollectorPlugin
+            base_class=self._bundle.base_hooks.CollectorPlugin,
+            plugin=self
         )
 
     def run_process_current_session(self, item):
@@ -591,7 +589,7 @@ class CollectorPlugin(PluginBase):
         :returns: None (item creation handles parenting)
         """
         try:
-            return self._hook_instance.process_current_session(item)
+            return self._hook_instance.process_current_session(self.settings, item)
         except Exception:
             error_msg = traceback.format_exc()
             self._logger.error(
@@ -613,7 +611,7 @@ class CollectorPlugin(PluginBase):
         :returns: None (item creation handles parenting)
         """
         try:
-            return self._hook_instance.process_file(item, path)
+            return self._hook_instance.process_file(self.settings, item, path)
         except Exception:
             error_msg = traceback.format_exc()
             self._logger.error(
@@ -624,6 +622,16 @@ class CollectorPlugin(PluginBase):
             # TODO: this needs to be refactored. should be no UI stuff here
             from sgtk.platform.qt import QtCore
             QtCore.QCoreApplication.processEvents()
+
+    def run_on_context_changed(self, settings, item):
+        """
+        Executes the on_context_changed logic for this plugin instance.
+
+        :param settings: Dictionary of settings
+        :param item: Item to analyze
+        """
+        with self._handle_plugin_error(None, "Error changing context: %s"):
+            self._hook_instance.on_context_changed(settings, item)
 
     def _get_resolved_settings(self, app_obj):
         """

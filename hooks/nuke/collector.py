@@ -27,23 +27,24 @@ class NukeSessionCollector(HookBaseClass):
     Collector that operates on the current nuke/nukestudio session. Should
     inherit from the basic collector hook.
     """
-    def __init__(self, parent):
+    def __init__(self, parent, **kwargs):
         """
         Construction
         """
         # call base init
-        super(NukeSessionCollector, self).__init__(parent)
+        super(NukeSessionCollector, self).__init__(parent, **kwargs)
 
         # cache the write node and workfiles apps
         self.__write_node_app = self.parent.engine.apps.get("tk-nuke-writenode")
         self.__workfiles_app = self.parent.engine.apps.get("tk-multi-workfiles2")
 
 
-    def process_current_session(self, parent_item):
+    def process_current_session(self, settings, parent_item):
         """
         Analyzes the current session open in Nuke/NukeStudio and parents a
         subtree of items under the parent_item passed in.
 
+        :param dict settings: Configured settings for this collector
         :param parent_item: Root item instance
         """
         items = []
@@ -53,7 +54,7 @@ class NukeSessionCollector(HookBaseClass):
 
         if hasattr(engine, "studio_enabled") and engine.studio_enabled:
             # running nuke studio.
-            self.collect_current_nukestudio_session(parent_item)
+            self.collect_current_nukestudio_session(settings, parent_item)
 
             # since we're in NS, any additional collected outputs will be
             # parented under the root item
@@ -61,23 +62,24 @@ class NukeSessionCollector(HookBaseClass):
         else:
             # running nuke. ensure additional collected outputs are parented
             # under the session
-            session_item = self.collect_current_nuke_session(parent_item)
+            session_item = self.collect_current_nuke_session(settings, parent_item)
 
         # Add session_item to the list
         items.append(session_item)
 
         # Also collect any output node items
-        items.extend(self.collect_node_outputs(session_item))
+        items.extend(self.collect_node_outputs(settings, session_item))
 
         # Return the list of items
         return items
 
 
-    def collect_current_nuke_session(self, parent_item):
+    def collect_current_nuke_session(self, settings, parent_item):
         """
         Analyzes the current session open in Nuke and parents a subtree of items
         under the parent_item passed in.
 
+        :param dict settings: Configured settings for this collector
         :param parent_item: Root item instance
         """
 
@@ -95,6 +97,7 @@ class NukeSessionCollector(HookBaseClass):
             )
 
         session_item = super(NukeSessionCollector, self)._add_file_item(
+            settings,
             parent_item,
             file_path
         )
@@ -105,11 +108,12 @@ class NukeSessionCollector(HookBaseClass):
         return session_item
 
 
-    def collect_current_nukestudio_session(self, parent_item):
+    def collect_current_nukestudio_session(self, settings, parent_item):
         """
         Analyzes the current session open in NukeStudio and parents a subtree of
         items under the parent_item passed in.
 
+        :param dict settings: Configured settings for this collector
         :param parent_item: Root item instance
         """
 
@@ -134,7 +138,7 @@ class NukeSessionCollector(HookBaseClass):
                 "file.nukestudio",
                 "NukeStudio Project",
                 project.name(),
-                collector=self
+                collector=self.plugin
             )
             session_item.set_icon_from_path(icon_path)
 
@@ -159,11 +163,12 @@ class NukeSessionCollector(HookBaseClass):
         return session_item
 
 
-    def collect_node_outputs(self, parent_item):
+    def collect_node_outputs(self, settings, parent_item):
         """
         Scan known output node types in the session and see if they reference
         files that have been written to disk.
 
+        :param dict settings: Configured settings for this collector
         :param parent_item: The parent item for any write geo nodes collected
         """
         items = []
@@ -206,7 +211,7 @@ class NukeSessionCollector(HookBaseClass):
                     thumbnail = None
 
                 # Call the parent _collect_file method
-                item = self._collect_file(parent_item, file_path)
+                item = self._collect_file(settings, parent_item, file_path)
                 if not item:
                     continue
 

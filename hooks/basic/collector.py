@@ -165,22 +165,24 @@ class FileCollectorPlugin(HookBaseClass):
         )
         return schema
 
-    def process_current_session(self, parent_item):
+    def process_current_session(self, settings, parent_item):
         """
         Analyzes the current scene open in a DCC and parents a subtree of items
         under the parent_item passed in.
 
+        :param dict settings: Configured settings for this collector
         :param parent_item: Root item instance
         """
         # default implementation does not do anything
         return []
 
 
-    def process_file(self, parent_item, path):
+    def process_file(self, settings, parent_item, path):
         """
         Analyzes the given file and creates one or more items
         to represent it.
 
+        :param dict settings: Configured settings for this collector
         :param parent_item: Root item instance
         :param path: Path to analyze
 
@@ -190,29 +192,44 @@ class FileCollectorPlugin(HookBaseClass):
 
         # handle files and folders differently
         if os.path.isdir(path):
-            return self._collect_folder(parent_item, path)
+            return self._collect_folder(settings, parent_item, path)
         else:
-            item = self._collect_file(parent_item, path)
+            item = self._collect_file(settings, parent_item, path)
             return [item] if item else []
 
 
-    def on_context_changed(self, item):
+    def on_context_changed(self, settings, item):
         """
         Callback to update the item on context changes.
 
+        :param dict settings: Configured settings for this collector
         :param item: The Item instance
         """
+
+        path = item.properties["path"]
+        is_sequence = item.properties["is_sequence"]
+
+        # get info for the item
+        item_info = self._get_item_info(settings, path, is_sequence)
+        work_path_template = item_info["work_path_template"]
+
+        # If defined, add the work_path_template to the item's properties
+        if work_path_template:
+            item.properties["work_path_template"] = work_path_template
+
         # Set the item's fields property
         item.properties["fields"] = self._resolve_item_fields(item)
 
 
-    def _collect_file(self, parent_item, path):
+    def _collect_file(self, settings, parent_item, path):
         """
         Process the supplied file path.
 
+        :param dict settings: Configured settings for this collector
         :param parent_item: parent item instance
         :param path: Path to analyze
         :param frame_sequence: Treat the path as a part of a sequence
+
         :returns: The item that was created
         """
         publisher = self.parent
@@ -275,15 +292,17 @@ class FileCollectorPlugin(HookBaseClass):
                 )
                 return
 
-        return self._add_file_item(parent_item, path, is_sequence, seq_files)
+        return self._add_file_item(settings, parent_item, path, is_sequence, seq_files)
 
 
-    def _collect_folder(self, parent_item, folder):
+    def _collect_folder(self, settings, parent_item, folder):
         """
         Process the supplied folder path.
 
+        :param dict settings: Configured settings for this collector
         :param parent_item: parent item instance
         :param folder: Path to analyze
+
         :returns: The item that was created
         """
 
@@ -296,7 +315,7 @@ class FileCollectorPlugin(HookBaseClass):
 
         file_items = []
         for path, seq_files in frame_sequences:
-            file_items += filter(None, [self._add_file_item(parent_item, path, True, seq_files)])
+            file_items += filter(None, [self._add_file_item(settings, parent_item, path, True, seq_files)])
 
         if not file_items:
             self.logger.warning("No file sequences found in: %s" % (folder,))
@@ -304,19 +323,26 @@ class FileCollectorPlugin(HookBaseClass):
         return file_items
 
 
-    def _add_file_item(self, parent_item, path, is_sequence=False, seq_files=None):
+    def _add_file_item(self, settings, parent_item, path, is_sequence=False, seq_files=None):
         """
         Creates a file item
+
+        :param dict settings: Configured settings for this collector
+        :param parent_item: parent item instance
+        :param path: Path to analyze
+        :param is_sequence: Bool as to whether to treat the path as a part of a sequence
+        :param seq_files: A list of files in the sequence
+
+        :returns: The item that was created
         """
         publisher = self.parent
 
         # get info for the extension
-        item_info = self._get_item_info(path, is_sequence)
+        item_info = self._get_item_info(settings, path, is_sequence)
 
         icon_path = item_info["icon_path"]
         item_type = item_info["item_type"]
         type_display = item_info["type_display"]
-        work_path_template = item_info["work_path_template"]
 
         display_name = publisher.util.get_publish_name(path)
 
@@ -331,16 +357,12 @@ class FileCollectorPlugin(HookBaseClass):
         if is_sequence:
             properties["sequence_paths"] = seq_files
 
-        # If defined, add the work_path_template to the item's properties
-        if work_path_template:
-            properties["work_path_template"] = work_path_template
-
         # create and populate the item
         file_item = parent_item.create_item(
             item_type,
             type_display,
             display_name,
-            collector=self,
+            collector=self.plugin,
             properties=properties
         )
 
@@ -387,7 +409,7 @@ class FileCollectorPlugin(HookBaseClass):
         return file_item
 
 
-    def _get_item_info(self, path, is_sequence):
+    def _get_item_info(self, settings, path, is_sequence):
         """
         Return a tuple of display name, item type, and icon path for the given
         filename.
@@ -396,6 +418,7 @@ class FileCollectorPlugin(HookBaseClass):
         it will use the mimetype category. If the file still cannot be
         identified, it will fallback to a generic file type.
 
+        :param dict settings: Configured settings for this collector
         :param path: The file path to identify type info for
 
         :return: A dictionary of information about the item to create::
@@ -428,7 +451,7 @@ class FileCollectorPlugin(HookBaseClass):
         common_type_found = False
 
         # look for the extension in the common file type info dict
-        for item_type, type_info in self.settings["Item Types"].value.iteritems():
+        for item_type, type_info in settings["Item Types"].value.iteritems():
 
             if extension in type_info["extensions"]:
                 # found the extension in the common types lookup. extract the
@@ -443,7 +466,7 @@ class FileCollectorPlugin(HookBaseClass):
                 # and if so, use that instead.
                 if is_sequence and not item_type.endswith(".sequence"):
                     tmp_type = "%s.%s" % (item_type, "sequence")
-                    if tmp_type in self.settings["Item Types"].value:
+                    if tmp_type in settings["Item Types"].value:
                         continue
 
                 # Otherwise, we've found our match
@@ -522,12 +545,13 @@ class FileCollectorPlugin(HookBaseClass):
         if not item:
             return None
 
-        name_field = item.properties["fields"].get("name")
-        if name_field:
-            return name_field
+        if "fields" in item.properties:
+            name_field = item.properties["fields"].get("name")
+            if name_field:
+                return name_field
 
-        elif item.parent:
-            return self._get_workfile_name_field(item.parent)
+        if item.parent:
+            return self._get_name_field_r(item.parent)
 
         return None
 

@@ -8,7 +8,6 @@
 # agreement to the Shotgun Pipeline Toolkit Source Code License. All rights
 # not expressly granted therein are reserved by Shotgun Software Inc.
 
-import os
 import sgtk
 
 from .base import PluginBase
@@ -105,7 +104,7 @@ class CollectorPlugin(PluginBase):
     ############################################################################
     # Collection methods
 
-    def process_current_session(self, parent_item):
+    def process_current_session(self, settings, parent_item):
         """
         This method analyzes the current engine session and creates a hierarchy
         of items for publishing.
@@ -127,6 +126,11 @@ class CollectorPlugin(PluginBase):
 
         |
 
+        The ``settings`` argument is a dictionary where the keys are the names
+        of the settings defined by the :func:`settings` property and the values
+        are :class:`~.processing.Setting` instances as
+        configured for this instance of the publish app.
+
         To create items within this method, use the
         :meth:`~.processing.Item.create_item` method available on the supplied
         ``parent_item``.
@@ -135,7 +139,7 @@ class CollectorPlugin(PluginBase):
 
         .. code-block:: python
 
-            def process_current_session(parent_item):
+            def process_current_session(settings, parent_item):
 
                 path = cmds.file(query=True, sn=True)
 
@@ -150,18 +154,20 @@ class CollectorPlugin(PluginBase):
                 session_item.properties["path"] = path
 
                 # collect additional file types, parented under the session
-                self._collect_geometry(session_item)
+                self._collect_geometry(settings, session_item)
 
         .. note:: See the hooks defined in the publisher app's ``hooks/`` folder
            for additional example implementations.
 
+        :param dict settings: A dictionary of configured
+            :class:`~.processing.Setting` objects for this
+            collector.
         :param parent_item: The root :class:`~.processing.Item` instance to
             collect child items for.
         """
         raise NotImplementedError
 
-
-    def process_file(self, parent_item, path):
+    def process_file(self, settings, parent_item, path):
         """
         This method creates one or more items to publish for the supplied file
         path.
@@ -176,6 +182,11 @@ class CollectorPlugin(PluginBase):
         path to determine what type of file it is and how to display it before
         creating the item to publish.
 
+        The ``settings`` argument is a dictionary where the keys are the names
+        of the settings defined by the :func:`settings` property and the values
+        are :class:`~.processing.Setting` instances as
+        configured for this instance of the publish app.
+
         To create items within this method, use the
         :meth:`~.processing.Item.create_item` method available on the supplied
         ``parent_item``.
@@ -184,7 +195,7 @@ class CollectorPlugin(PluginBase):
 
         .. code-block:: python
 
-            def process_file(parent_item, path):
+            def process_file(settings, parent_item, path):
 
                 # make sure the path is normalized. no trailing separator,
                 # separators are appropriate for the current os, no double
@@ -209,6 +220,9 @@ class CollectorPlugin(PluginBase):
         .. note:: See the hooks defined in the publisher app's ``hooks/`` folder
            for additional example implementations.
 
+        :param dict settings: A dictionary of configured
+            :class:`~.processing.Setting` objects for this
+            collector.
         :param parent_item: The root :class:`~.processing.Item` instance to
             collect child items for.
         :param path: A string representing the file path to analyze
@@ -216,10 +230,13 @@ class CollectorPlugin(PluginBase):
         raise NotImplementedError
 
 
-    def on_context_changed(self, item):
+    def on_context_changed(self, settings, item):
         """
         Callback to update the item on context changes.
 
+        :param dict settings: A dictionary of configured
+            :class:`~.processing.Setting` objects for this
+            collector.
         :param parent_item: The current :class:`~.processing.Item` instance
             whose :class:`sgtk.Context` has been updated.
         """

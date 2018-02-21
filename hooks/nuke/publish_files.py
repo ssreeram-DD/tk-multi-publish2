@@ -20,12 +20,12 @@ class NukePublishFilesPlugin(HookBaseClass):
     """
     Inherits from PublishFilesPlugin
     """
-    def __init__(self, parent):
+    def __init__(self, parent, **kwargs):
         """
         Construction
         """
         # call base init
-        super(NukePublishFilesPlugin, self).__init__(parent)
+        super(NukePublishFilesPlugin, self).__init__(parent, **kwargs)
         
         # cache the review submission app
         self.__write_node_app = self.parent.engine.apps.get("tk-nuke-writenode")

@@ -199,7 +199,7 @@ class UploadVersionPlugin(HookBaseClass):
             publish_data = item.properties["sg_publish_data"]
             version_data["published_files"] = [publish_data]
 
-        if self.settings["Link Local File"].value:
+        if task_settings["Link Local File"].value:
             version_data["sg_path_to_movie"] = path
 
         # log the version data for debugging
@@ -223,7 +223,7 @@ class UploadVersionPlugin(HookBaseClass):
 
         thumb = item.get_thumbnail_as_path()
 
-        if self.settings["Upload"].value:
+        if task_settings["Upload"].value:
             self.logger.info("Uploading content...")
 
             # on windows, ensure the path is utf-8 encoded to avoid issues with

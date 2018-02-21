@@ -19,12 +19,12 @@ class CreateVersionPlugin(HookBaseClass):
     """
     Plugin for publishing an open nuke session.
     """
-    def __init__(self, parent):
+    def __init__(self, parent, **kwargs):
         """
         Construction
         """
         # call base init
-        super(CreateVersionPlugin, self).__init__(parent)
+        super(CreateVersionPlugin, self).__init__(parent, **kwargs)
 
         # cache the review submission app
         self.__review_submission_app = self.parent.engine.apps.get("tk-multi-reviewsubmission")
