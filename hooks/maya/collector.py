@@ -249,8 +249,9 @@ class MayaSessionCollector(HookBaseClass):
 
         publisher = self.parent
 
-        # Start with the item's fields
+        # Start with the item's fields, minus extension
         fields = copy.deepcopy(parent_item.properties.get("fields", {}))
+        fields.pop("extension")
 
         work_tmpl = publisher.get_template_by_name(work_path_template)
         if not work_tmpl:
