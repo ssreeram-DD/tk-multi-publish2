@@ -30,7 +30,7 @@ class Item(object):
     Items are organized as a tree with access to parent and children.
     """
 
-    def __init__(self, item_type, display_type, name, parent, collector, properties):
+    def __init__(self, item_type, display_type, name, parent, collector, context, properties):
         """
         Initialize an item. Should never be called.
 
@@ -63,8 +63,12 @@ class Item(object):
         # the following var indicates that the current thumbnail overrides the summary one
         self._thumbnail_explicit = True
 
+        # Set the context on the item if defined
+        if context:
+            self.context = context
+
         # If a parent exists, set the initial context to the parent's context
-        if self._parent:
+        elif self._parent:
             self.context = self._parent.context
 
     def __repr__(self):
@@ -99,7 +103,7 @@ class Item(object):
 
         :returns: :class:`Item`
         """
-        return Item("_root", "_root", "_root", parent=None, collector=None, properties=None)
+        return Item("_root", "_root", "_root", parent=None, collector=None, context=None, properties=None)
 
     def remove_item(self, item):
         """
@@ -119,7 +123,7 @@ class Item(object):
         """
         return self.parent is None
 
-    def create_item(self, item_type, display_type, name, collector=None, properties=None):
+    def create_item(self, item_type, display_type, name, collector=None, context=None, properties=None):
         """
         Factory method for generating new items.
 
@@ -174,7 +178,13 @@ class Item(object):
         :param str name: The name to represent the item in a UI. This can be a
             node name in a DCC or a file name.
         """
-        child_item = Item(item_type, display_type, name, parent=self, collector=collector, properties=properties)
+        child_item = Item(item_type,
+                          display_type,
+                          name,
+                          parent=self,
+                          collector=collector,
+                          context=context,
+                          properties=properties)
         self._children.append(child_item)
         child_item._parent = self
         logger.debug("Created %s" % child_item)
@@ -394,7 +404,7 @@ class Item(object):
         propagate description to children
         """
         for child in self._children:
-           child.description = self._description   
+            child.description = self._description   
 
     description = property(_get_description, _set_description)
 
@@ -407,7 +417,7 @@ class Item(object):
 
         for child in self._children:
             if child._get_thumbnail_explicit_recursive():
-               return True
+                return True
 
         return False
 
@@ -416,9 +426,9 @@ class Item(object):
         propagate thumbnail to children
         """
         for child in self._children:
-           child.thumbnail = self.thumbnail
-           child.thumbnail_explicit = False
-           child._propagate_thumbnail_to_children()
+            child.thumbnail = self.thumbnail
+            child.thumbnail_explicit = False
+            child._propagate_thumbnail_to_children()
 
     def _get_thumbnail(self):
         """
