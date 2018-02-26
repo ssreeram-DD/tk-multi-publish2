@@ -17,8 +17,6 @@ import urllib
 import sgtk
 from sgtk import TankError
 
-from tank import context
-
 HookBaseClass = sgtk.get_hook_baseclass()
 
 
@@ -209,29 +207,36 @@ class FileCollectorPlugin(HookBaseClass):
         """
 
         path = item.properties["path"]
-        is_sequence = item.properties["is_sequence"]
 
-        # get info for the item
-        item_info = self._get_item_info(settings, path, is_sequence)
-        work_path_template = item_info["work_path_template"]
+        item.properties["work_path_template"] = self._resolve_work_path_template(item.properties, path)
+
+        # Set the item's fields property
+        item.properties["fields"] = self._resolve_item_fields(item)
+
+
+    def _resolve_work_path_template(self, properties, path):
+        """
+        Resolve work_path_template from the properties.
+        The signature uses properties, so that it can resolve the template even if the item object hasn't been created.
+
+        :param properties: properties that have/will be used to build item object.
+        :param path: path to be used to get the templates, using template_from_path.
+        :return: Name of the template.
+        """
+
+        work_path_template = properties.get("work_path_template")
 
         # If defined, add the work_path_template to the item's properties
         # set/evaluate the correct work_path_template
         # First check if a work_path_template has been defined
         if work_path_template:
             work_tmpl = self.parent.get_template_by_name(work_path_template)
-
-            # template is invalid.
             if not work_tmpl:
-                # let's try to check if this path fits into any known template
-                work_tmpl = self.sgtk.template_from_path(path)
+                # this template was not found in the template config!
+                raise TankError("The template '%s' does not exist!" % work_path_template)
 
-                if not work_tmpl:
-                    # this template was not found in the template config!
-                    raise TankError("The template '%s' does not exist!" % work_path_template)
-
-                # update the field with correct value so that we can use it everytime for this item
-                work_path_template = work_tmpl.name
+            # update the field with correct value so that we can use it everytime for this item
+            work_path_template = work_tmpl.name
 
         # Else see if the path matches an existing template
         else:
@@ -239,60 +244,39 @@ class FileCollectorPlugin(HookBaseClass):
             work_tmpl = self.sgtk.template_from_path(path)
             if not work_tmpl:
                 # this path doesn't map to any known templates!
-                raise TankError("Cannot find a matching template for path: %s" % path)
+                self.logger.warning("Cannot find a matching template for path: %s" % path)
+            else:
+                # update the field with correct value so that we can use it everytime for this item
+                work_path_template = work_tmpl.name
 
-            # update the field with correct value so that we can use it everytime for this item
-            work_path_template = work_tmpl.name
+        return work_path_template
 
-        if work_path_template:
-            item.properties["work_path_template"] = work_path_template
 
-        # Set the item's fields property
-        item.properties["fields"] = self._resolve_item_fields(item)
-
-    def _build_context(self, item):
+    def _get_item_context_from_path(self, properties, path):
         """Updates the context of the item from the work_path_template/template, if needed.
 
-        :param item: item from publisher.
+        :param properties: properties of the item.
+        :param path: path to build the context from.
         """
 
         publisher = self.parent
+        new_context = None
 
-        # this should be defined and correct by now!
-        # Since we resolve this field too, while context change of the item.
-        work_path_template = item.properties.get("work_path_template")
-        path = item.properties.get("path")
+        work_path_template = self._resolve_work_path_template(properties, path)
 
-        work_tmpl = publisher.get_template_by_name(work_path_template)
+        if work_path_template:
+            work_tmpl = publisher.get_template_by_name(work_path_template)
+            # evaluate the context of the item too at the time of addition.
+            # user can change this later if they don't like it.
+            # this is being done here, since the tasks are created after the process_file hook runs.
+            # We anyways can't resolve a TASK context using context_from_path?!
+            # So we can check for that? In case we are launching the publisher with correct context.
+            if not publisher.context.task:
+                entities = work_tmpl.get_entities(path)
 
-        # evaluate the context of the item too at the time of addition.
-        # user can change this later if they don't like it.
-        # this is being done here, since the tasks are created after the process_file hook runs.
-        # We anyways can't resolve a TASK context using context_from_path?!
-        # So we can check for that? In case we are launching the publisher with correct context.
-        if not item.context.task:
-            new_context = self.tank.context_from_path(path)
-            entities = work_tmpl.get_entities(path)
-            entity_dict = {entity['type'].lower(): entity for entity in entities}
-            valid_entity_dict = None
+                new_context = self.tank.context_from_entities(entities)
 
-            if 'asset' in entity_dict:
-                valid_entity_dict = context._get_valid_entity_dict(self.tank, entity_dict['asset'])
-            elif 'shot' in entity_dict:
-                valid_entity_dict = context._get_valid_entity_dict(self.tank, entity_dict['shot'])
-            elif 'sequence' in entity_dict:
-                valid_entity_dict = context._get_valid_entity_dict(self.tank, entity_dict['sequence'])
-            elif 'project' in entity_dict:
-                valid_entity_dict = context._get_valid_entity_dict(self.tank, entity_dict['project'])
-
-            if valid_entity_dict:
-                if 'step' in entity_dict:
-                    valid_entity_dict['step'] = entity_dict['step']
-
-                new_context = context.from_entity_dictionary(self.tank, valid_entity_dict)
-
-            if new_context:
-                item.context = new_context
+        return new_context
 
 
     def _collect_file(self, settings, parent_item, path):
@@ -417,6 +401,7 @@ class FileCollectorPlugin(HookBaseClass):
         icon_path = item_info["icon_path"]
         item_type = item_info["item_type"]
         type_display = item_info["type_display"]
+        work_path_template = item_info["work_path_template"]
 
         display_name = publisher.util.get_publish_name(path)
 
@@ -431,17 +416,24 @@ class FileCollectorPlugin(HookBaseClass):
         if is_sequence:
             properties["sequence_paths"] = seq_files
 
+        if work_path_template:
+            properties["work_path_template"] = work_path_template
+
+        # build the context of the item
+        context = self._get_item_context_from_path(properties, path)
+
         # create and populate the item
         file_item = parent_item.create_item(
             item_type,
             type_display,
             display_name,
             collector=self.plugin,
+            context=context,
             properties=properties
         )
 
-        # build the context of the item
-        self._build_context(file_item)
+        # resolve work_path_template for the item
+        file_item.properties["work_path_template"] = self._resolve_work_path_template(file_item.properties, path)
 
         # Set the icon path
         file_item.set_icon_from_path(icon_path)
@@ -649,11 +641,12 @@ class FileCollectorPlugin(HookBaseClass):
         # this should be defined and correct by now!
         # Since we resolve this field too, while context change of the item.
         work_path_template = item.properties.get("work_path_template")
-        work_tmpl = publisher.get_template_by_name(work_path_template)
 
-        # If there is a work template, first attempt to get fields from parsing the path
-        if work_tmpl:
+        if work_path_template:
+            work_tmpl = publisher.get_template_by_name(work_path_template)
+
             tmpl_fields = work_tmpl.validate_and_get_fields(path)
+
             if tmpl_fields:
                 self.logger.info(
                     "Parsed path using template '%s' for item: %s" % (work_tmpl.name, item.name),
