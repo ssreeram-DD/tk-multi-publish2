@@ -207,8 +207,11 @@ class FileCollectorPlugin(HookBaseClass):
         """
 
         path = item.properties["path"]
+        is_sequence = item.properties["is_sequence"]
 
-        item.properties["work_path_template"] = self._resolve_work_path_template(item.properties, path)
+        item_info = self._get_item_info(settings, path, is_sequence)
+
+        item.properties["work_path_template"] = self._resolve_work_path_template(item_info, path)
 
         # Set the item's fields property
         item.properties["fields"] = self._resolve_item_fields(item)
@@ -227,16 +230,11 @@ class FileCollectorPlugin(HookBaseClass):
         work_path_template = properties.get("work_path_template")
 
         # If defined, add the work_path_template to the item's properties
-        # set/evaluate the correct work_path_template
-        # First check if a work_path_template has been defined
         if work_path_template:
             work_tmpl = self.parent.get_template_by_name(work_path_template)
             if not work_tmpl:
                 # this template was not found in the template config!
                 raise TankError("The template '%s' does not exist!" % work_path_template)
-
-            # update the field with correct value so that we can use it everytime for this item
-            work_path_template = work_tmpl.name
 
         # Else see if the path matches an existing template
         else:
@@ -252,7 +250,7 @@ class FileCollectorPlugin(HookBaseClass):
         return work_path_template
 
 
-    def _get_item_context_from_path(self, properties, path):
+    def _get_item_context_from_path(self, parent_item, properties, path):
         """Updates the context of the item from the work_path_template/template, if needed.
 
         :param properties: properties of the item.
@@ -260,23 +258,19 @@ class FileCollectorPlugin(HookBaseClass):
         """
 
         publisher = self.parent
-        new_context = None
 
         work_path_template = self._resolve_work_path_template(properties, path)
 
         if work_path_template:
             work_tmpl = publisher.get_template_by_name(work_path_template)
-            # evaluate the context of the item too at the time of addition.
-            # user can change this later if they don't like it.
-            # this is being done here, since the tasks are created after the process_file hook runs.
-            # We anyways can't resolve a TASK context using context_from_path?!
-            # So we can check for that? In case we are launching the publisher with correct context.
-            if not publisher.context.task:
-                entities = work_tmpl.get_entities(path)
 
-                new_context = self.tank.context_from_entities(entities)
+            entities = work_tmpl.get_entities(path)
 
-        return new_context
+            new_context = self.tank.context_from_entities(entities, previous_context=parent_item.context)
+            if new_context != parent_item.context:
+                return new_context
+            else:
+                return parent_item.context
 
 
     def _collect_file(self, settings, parent_item, path):
@@ -420,7 +414,7 @@ class FileCollectorPlugin(HookBaseClass):
             properties["work_path_template"] = work_path_template
 
         # build the context of the item
-        context = self._get_item_context_from_path(properties, path)
+        context = self._get_item_context_from_path(parent_item, properties, path)
 
         # create and populate the item
         file_item = parent_item.create_item(
@@ -431,9 +425,6 @@ class FileCollectorPlugin(HookBaseClass):
             context=context,
             properties=properties
         )
-
-        # resolve work_path_template for the item
-        file_item.properties["work_path_template"] = self._resolve_work_path_template(file_item.properties, path)
 
         # Set the icon path
         file_item.set_icon_from_path(icon_path)
