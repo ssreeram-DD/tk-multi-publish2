@@ -30,6 +30,13 @@ shotgun_globals = sgtk.platform.import_framework("tk-framework-shotgunutils", "s
 logger = sgtk.platform.get_logger(__name__)
 
 
+class PreloadSignaler(QtCore.QObject):
+    preload_signal = QtCore.Signal(list)
+
+
+PRELOAD_SIGNALER = PreloadSignaler()
+
+
 class AppDialog(QtGui.QWidget):
     """
     Main dialog window for the App
@@ -98,6 +105,11 @@ class AppDialog(QtGui.QWidget):
         # note: value of second option does not seem to
         # matter (as long as it's there)
         self.ui.splitter.setSizes([360, 100])
+
+        # connect preload signaler to the on-drop processing so that preload can
+        # happen with a list of paths on reading the SGTK_PUBLISH_PRELOAD_PATH environment variable
+        # this is being set when launching publisher with --p argument
+        PRELOAD_SIGNALER.preload_signal.connect(self._on_drop)
 
         # drag and drop
         self.ui.frame.something_dropped.connect(self._on_drop)
