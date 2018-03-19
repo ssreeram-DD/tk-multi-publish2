@@ -616,6 +616,47 @@ class FileCollectorPlugin(HookBaseClass):
         return None
 
 
+    def _get_template_fields_from_path(self, item, template_name, path):
+        """
+        Get the fields by parsing the input path using the template derived from
+        the input template name.
+        """
+        publisher = self.parent
+
+        tmpl_obj = publisher.get_template_by_name(template_name)
+        if not tmpl_obj:
+            # this template was not found in the template config!
+            raise TankError("The template '%s' does not exist!" % template_name)
+
+        tmpl_fields = tmpl_obj.validate_and_get_fields(path)
+        if tmpl_fields:
+            self.logger.info(
+                "Parsed path using template '%s' for item: %s" % (tmpl_obj.name, item.name),
+                extra={
+                    "action_show_more_info": {
+                        "label": "Show Info",
+                        "tooltip": "Show more info",
+                        "text": "Path parsed by template '%s': %s\nResulting fields:\n%s" %
+                        (template_name, path, pprint.pformat(tmpl_fields))
+                    }
+                }
+            )
+            return tmpl_fields
+
+        self.logger.warning(
+            "Path does not match template for item: %s" % (item.name),
+            extra={
+                "action_show_more_info": {
+                    "label": "Show Info",
+                    "tooltip": "Show more info",
+                    "text": "Path cannot be parsed by template '%s': %s" %
+                    (template_name, path)
+                }
+            }
+        )
+        return {}
+
+
     def _resolve_item_fields(self, item):
         """
         Helper method used to get fields that might not normally be defined in the context.
@@ -629,42 +670,12 @@ class FileCollectorPlugin(HookBaseClass):
 
         fields = {}
 
-        # this should be defined and correct by now!
-        # Since we resolve this field too, while context change of the item.
+        # If there is a valid work_path_template, attempt to get any fields from it
         work_path_template = item.properties.get("work_path_template")
-
         if work_path_template:
-            work_tmpl = publisher.get_template_by_name(work_path_template)
+            fields.update(self._get_template_fields_from_path(item, work_path_template, path))
 
-            tmpl_fields = work_tmpl.validate_and_get_fields(path)
-
-            if tmpl_fields:
-                self.logger.info(
-                    "Parsed path using template '%s' for item: %s" % (work_tmpl.name, item.name),
-                    extra={
-                        "action_show_more_info": {
-                            "label": "Show Info",
-                            "tooltip": "Show more info",
-                            "text": "Path parsed by template '%s': %s\nResulting fields:\n%s" %
-                            (work_path_template, path, pprint.pformat(tmpl_fields))
-                        }
-                    }
-                )
-                fields.update(tmpl_fields)
-            else:
-                self.logger.warning(
-                    "Path does not match template for item: %s" % (item.name),
-                    extra={
-                        "action_show_more_info": {
-                            "label": "Show Info",
-                            "tooltip": "Show more info",
-                            "text": "Path cannot be parsed by template '%s': %s" %
-                            (work_path_template, path)
-                        }
-                    }
-                )
-
-        # If not already populated, first attempt to get the width and height
+        # If not already populated, attempt to get the width and height from the image
         if "width" not in fields or "height" not in fields:
             # If image, use OIIO to introspect file and get WxH
             try:
@@ -720,7 +731,7 @@ class FileCollectorPlugin(HookBaseClass):
             if name_field:
                 fields["name"] = name_field
 
-            # Else attempt to use a santized task name
+            # Else attempt to use a sanitized task name
             elif item.context.task:
                 name_field = item.context.task["name"]
                 fields["name"] = urllib.quote(name_field.replace(" ", "_").lower(), safe='')
