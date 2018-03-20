@@ -210,25 +210,28 @@ class NukeSessionCollector(HookBaseClass):
                     file_path = node[param_name].evaluate()
                     thumbnail = None
 
-                # Call the parent _collect_file method
-                item = self._collect_file(settings, parent_item, file_path)
-                if not item:
-                    continue
+                # Collect the item if we have a file_path defined
+                if file_path:
 
-                # the item has been created. update the display name to include
-                # the nuke node to make it clear to the user how it was
-                # collected within the current session. also, prepend nukesession
-                # to the item type so we can process it by the nuke-specific publish
-                item.name = "%s (%s)" % (node.Class(), node.name())
+                    # Call the parent _collect_file method
+                    item = self._collect_file(settings, parent_item, file_path)
+                    if not item:
+                        continue
 
-                # Store a reference to the originating node
-                item.properties["node"] = node
+                    # the item has been created. update the display name to include
+                    # the nuke node to make it clear to the user how it was
+                    # collected within the current session. also, prepend nukesession
+                    # to the item type so we can process it by the nuke-specific publish
+                    item.name = "%s (%s)" % (node.Class(), node.name())
 
-                if thumbnail:
-                    item.set_thumbnail_from_path(thumbnail)
+                    # Store a reference to the originating node
+                    item.properties["node"] = node
 
-                # Add item to the list
-                items.append(item)
+                    if thumbnail:
+                        item.set_thumbnail_from_path(thumbnail)
+
+                    # Add item to the list
+                    items.append(item)
 
         return items
 
