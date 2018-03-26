@@ -475,8 +475,7 @@ class PublishFilesPlugin(HookBaseClass):
                 **publish_data)
             self.logger.info("Publish registered!")
         except Exception:
-            # cleanup the copied files since we couldn't create a PublishedFile entity
-            self._delete_files(publish_path, item)
+            self.undo(task_settings, item)
             self.logger.error(
                 "Couldn't register Publish for %s" % item.name,
                 extra={
@@ -487,6 +486,37 @@ class PublishFilesPlugin(HookBaseClass):
                     }
                 }
             )
+
+
+    def undo(self, task_settings, item):
+        """
+        Execute the undo method. This method will
+        delete the files that have been copied to the disk
+        it will also delete any PublishedFile entity that got created due to the publish.
+
+        :param task_settings: Dictionary of Settings. The keys are strings, matching
+            the keys returned in the task_settings property. The values are `Setting`
+            instances.
+        :param item: Item to process
+        """
+
+        publish_data = item.properties.get("sg_publish_data")
+        publish_path = item.properties.get("publish_path")
+        self._delete_files(publish_path, item)
+        if publish_data:
+            try:
+                self.sgtk.shotgun.delete(publish_data["type"], publish_data["id"])
+            except Exception:
+                self.logger.error(
+                    "Failed to delete PublishedFile Entity for %s" % item.name,
+                    extra={
+                        "action_show_more_info": {
+                            "label": "Show Error Log",
+                            "tooltip": "Show the error log",
+                            "text": traceback.format_exc()
+                        }
+                    }
+                )
 
 
     def finalize(self, task_settings, item):

@@ -458,6 +458,37 @@ class PublishPlugin(PluginBase):
         """
         raise NotImplementedError
 
+    def undo(self, task_settings, item):
+        """
+        Cleans up the products created after a publish for an item.
+
+        This method can be used to delete any files or entities that were
+        created as a part of the publish process.
+
+        Any raised exceptions will have to be handled within this method itself.
+
+        Simple implementation example of deleting a PublishedFile entity and the corresponding files on disk:
+
+        .. code-block:: python
+
+            def undo(self, task_settings, item):
+
+                publish_data = item.properties.get("sg_publish_data")
+                publish_path = item.properties.get("publish_path")
+                self._delete_files(publish_path, item)
+                if publish_data:
+                    try:
+                        self.sgtk.shotgun.delete(publish_data["type"], publish_data["id"])
+                    except Exception:
+                        self.logger.error("Failed to delete the PublishedFile entity for %s" % item.name)
+
+        :param dict task_settings: The keys are strings, matching the keys returned
+            in the :data:`settings` property. The values are
+            :class:`~.processing.Setting` instances.
+        :param item: The :class:`~.processing.Item` instance to validate.
+        """
+        raise NotImplementedError
+
     ############################################################################
     # Methods for creating/displaying custom plugin interface
 
