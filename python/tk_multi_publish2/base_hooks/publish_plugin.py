@@ -12,7 +12,7 @@ import os
 import traceback
 import pprint
 import sgtk
-from sgtk.util.filesystem import copy_file, ensure_folder_exists
+from sgtk.util.filesystem import copy_file, ensure_folder_exists, safe_delete_file
 
 from .base import PluginBase
 
@@ -458,6 +458,37 @@ class PublishPlugin(PluginBase):
         """
         raise NotImplementedError
 
+    def undo(self, task_settings, item):
+        """
+        Cleans up the products created after a publish for an item.
+
+        This method can be used to delete any files or entities that were
+        created as a part of the publish process.
+
+        Any raised exceptions will have to be handled within this method itself.
+
+        Simple implementation example of deleting a PublishedFile entity and the corresponding files on disk:
+
+        .. code-block:: python
+
+            def undo(self, task_settings, item):
+
+                publish_data = item.properties.get("sg_publish_data")
+                publish_path = item.properties.get("publish_path")
+                self._delete_files(publish_path, item)
+                if publish_data:
+                    try:
+                        self.sgtk.shotgun.delete(publish_data["type"], publish_data["id"])
+                    except Exception:
+                        self.logger.error("Failed to delete the PublishedFile entity for %s" % item.name)
+
+        :param dict task_settings: The keys are strings, matching the keys returned
+            in the :data:`settings` property. The values are
+            :class:`~.processing.Setting` instances.
+        :param item: The :class:`~.processing.Item` instance to validate.
+        """
+        raise NotImplementedError
+
     ############################################################################
     # Methods for creating/displaying custom plugin interface
 
@@ -621,6 +652,46 @@ class PublishPlugin(PluginBase):
                 "Copied work file '%s' to '%s'." % (work_file, dest_file)
             )
             processed_files.append(dest_file)
+
+        return processed_files
+
+    def _delete_files(self, deletion_path, item):
+        """
+        This method handles deleting an item's path(s) from a designated location.
+
+        If the item has "sequence_paths" set, it will attempt to delete all paths
+        assuming they meet the required criteria.
+        """
+
+        publisher = self.parent
+
+        # ---- get a list of files to be deleted
+        if item.properties["is_sequence"]:
+            work_files = item.properties.get("sequence_paths", [])
+        else:
+            work_files = [item.properties["path"]]
+
+        # ---- delete the work files from the publish location
+        processed_files = []
+        for work_file in work_files:
+
+            if item.properties["is_sequence"]:
+                frame_num = publisher.util.get_frame_number(work_file)
+                deletion_file = publisher.util.get_path_for_frame(deletion_path, frame_num)
+            else:
+                deletion_file = deletion_path
+
+            # If the file paths are the same, skip...
+            if work_file == deletion_file:
+                continue
+
+            # delete the file
+            safe_delete_file(deletion_file)
+
+            self.logger.debug(
+                "Deleted publish file '%s'." % deletion_file
+            )
+            processed_files.append(deletion_file)
 
         return processed_files
 
