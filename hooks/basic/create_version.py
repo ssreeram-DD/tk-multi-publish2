@@ -11,6 +11,8 @@
 import os
 import copy
 import sgtk
+from sgtk.platform import find_app_settings
+from sgtk.platform.engine import get_environment_from_context
 
 HookBaseClass = sgtk.get_hook_baseclass()
 
@@ -227,6 +229,14 @@ class CreateVersionPlugin(HookBaseClass):
 
         # Update with the fields from the context
         fields.update(item.context.as_template_fields())
+
+        # set review_submission app's env/context based on item (ingest)
+        env = get_environment_from_context(self.__review_submission_app.sgtk, item.context)
+        self.__review_submission_app.env = env
+        self.__review_submission_app.context = item.context
+        settings = env.get_app_settings(self.__review_submission_app.engine.name,
+                                        self.__review_submission_app.name)
+        self.__review_submission_app.settings = settings
 
         sg_version = self.__review_submission_app.render_and_submit_path(
             item.properties["path"],
