@@ -349,7 +349,7 @@ class BasicPathInfo(HookBaseClass):
             seq_path = seq_info["sequence_path"]
 
             logger.debug("Found sequence: %s" % (seq_path,))
-            frame_sequences.append((seq_path, seq_info["file_list"]))
+            frame_sequences.append((seq_path, sorted(seq_info["file_list"])))
 
         return frame_sequences
 
