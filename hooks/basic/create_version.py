@@ -228,6 +228,9 @@ class CreateVersionPlugin(HookBaseClass):
         # Update with the fields from the context
         fields.update(item.context.as_template_fields())
 
+        # set review_submission app's env/context based on item (ingest)
+        self.__review_submission_app.change_context(item.context)
+
         sg_version = self.__review_submission_app.render_and_submit_path(
             item.properties["path"],
             fields,

@@ -173,7 +173,7 @@ class PluginBase(object):
             # There's more than one instance of that app for the engine instance, so we'll
             # need to deterministically pick one. We'll pick the one with the same
             # application instance name as the current app instance.
-            for settings in app_settings:
+            for settings in app_settings_list:
                 if settings.get("app_instance") == app.instance_name:
                     app_settings = settings
                     break
