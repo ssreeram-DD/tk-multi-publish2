@@ -250,12 +250,13 @@ class FileCollectorPlugin(HookBaseClass):
         return work_path_template
 
 
-    def _get_item_context_from_path(self, parent_item, properties, path, extra_entities=list()):
+    def _get_item_context_from_path(self, parent_item, properties, path, default_entities=list()):
         """Updates the context of the item from the work_path_template/template, if needed.
 
         :param properties: properties of the item.
         :param path: path to build the context from.
-        :param extra_entities: list of entities to add to the context that don't already exist in it.
+        :param default_entities: a list of default entities to use during the creation of the
+        :class:`sgtk.Context` if not found in the path
         """
 
         publisher = self.parent
@@ -268,10 +269,9 @@ class FileCollectorPlugin(HookBaseClass):
             entities = work_tmpl.get_entities(path)
 
             existing_types = {entity['type']: entity for entity in entities}
-            addable_entities = [entity for entity in extra_entities if entity['type'] not in existing_types]
+            addable_entities = [entity for entity in default_entities if entity['type'] not in existing_types]
 
-            if addable_entities:
-                entities.extend(addable_entities)
+            entities.extend(addable_entities)
 
             new_context = self.tank.context_from_entities(entities, previous_context=parent_item.context)
             if new_context != parent_item.context:
