@@ -12,7 +12,7 @@ import os
 import traceback
 import pprint
 import sgtk
-from sgtk.util.filesystem import copy_file, ensure_folder_exists, safe_delete_file
+from sgtk.util.filesystem import copy_file, ensure_folder_exists, safe_delete_file, symlink_file
 
 from .base import PluginBase
 
@@ -650,6 +650,60 @@ class PublishPlugin(PluginBase):
 
             self.logger.debug(
                 "Copied work file '%s' to '%s'." % (work_file, dest_file)
+            )
+            processed_files.append(dest_file)
+
+        return processed_files
+
+    def _symlink_files(self, item):
+        """
+        This method handles symlink an item's publish_path to publish_symlink_path,
+        assuming publish_symlink_path is already populated.
+
+        If the item has "sequence_paths" set, it will attempt to symlink all paths
+        assuming they meet the required criteria.
+        """
+
+        publisher = self.parent
+
+        source_path = item.properties["publish_path"]
+        dest_path = item.properties["publish_symlink_path"]
+
+        # ---- get a list of files to be symlinked
+        if item.properties["is_sequence"]:
+            work_files = item.properties.get("sequence_paths", [])
+        else:
+            work_files = [item.properties["path"]]
+
+        # ---- symlink the publish files to the publish symlink path
+        processed_files = []
+        for work_file in work_files:
+
+            if item.properties["is_sequence"]:
+                frame_num = publisher.util.get_frame_number(work_file)
+                source_file = publisher.util.get_path_for_frame(source_path, frame_num)
+                dest_file = publisher.util.get_path_for_frame(dest_path, frame_num)
+            else:
+                source_file = source_path
+                dest_file = dest_path
+
+            # If the symlink paths and publish path are the same, skip...
+            if dest_file == source_file:
+                continue
+
+            # symlink the file
+            try:
+                dest_folder = os.path.dirname(dest_file)
+                ensure_folder_exists(dest_folder)
+                symlink_file(source_file, dest_file)
+            except Exception as e:
+                raise Exception(
+                    "Failed to symlink published file from '%s' to '%s'.\n%s" %
+                    (source_file, dest_file, traceback.format_exc())
+                )
+
+            self.logger.debug(
+                "Symlinked published file '%s' to '%s'." % (source_file, dest_file)
             )
             processed_files.append(dest_file)
 

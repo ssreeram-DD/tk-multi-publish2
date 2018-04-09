@@ -223,6 +223,12 @@ class PublishFilesPlugin(HookBaseClass):
                 "fields": ["context", "*"],
                 "allows_empty": True,
             },
+            "publish_symlink_template": {
+                "type": "template",
+                "description": "",
+                "fields": ["context", "*"],
+                "allows_empty": True,
+            },
             "additional_publish_fields": {
                 "type": "dict",
                 "values": {
@@ -310,7 +316,7 @@ class PublishFilesPlugin(HookBaseClass):
 
         # ---- validate the settings required to publish
 
-        attr_list = ("publish_type", "publish_path", "publish_name", "publish_version")
+        attr_list = ("publish_type", "publish_path", "publish_name", "publish_version", "publish_symlink_path")
         for attr in attr_list:
             try:
                 method = getattr(self, "_get_%s" % attr)
@@ -399,7 +405,8 @@ class PublishFilesPlugin(HookBaseClass):
                     "label": "Show Info",
                     "tooltip": "Show more info",
                     "text": "Publish Name: %s" % (item.properties["publish_name"],) + "\n" +
-                            "Publish Path: %s" % (item.properties["publish_path"],)
+                            "Publish Path: %s" % (item.properties["publish_path"],) + "\n" +
+                            "Publish Symlink Path: %s" % (item.properties["publish_symlink_path"],)
                 }
             }
         )
@@ -420,13 +427,18 @@ class PublishFilesPlugin(HookBaseClass):
         publisher = self.parent
 
         # Get item properties populated by validate method
-        publish_name     = item.properties["publish_name"]
-        publish_path     = item.properties["publish_path"]
-        publish_type     = item.properties["publish_type"]
-        publish_version  = item.properties["publish_version"]
+        publish_name          = item.properties["publish_name"]
+        publish_path          = item.properties["publish_path"]
+        publish_symlink_path  = item.properties["publish_symlink_path"]
+        publish_type          = item.properties["publish_type"]
+        publish_version       = item.properties["publish_version"]
 
         # handle copying of work to publish
         self._copy_files(publish_path, item)
+
+        # symlink the files if it's defined in publish templates
+        if publish_symlink_path:
+            self._symlink_files(item)
 
         # if the parent item has a publish path, include it in the list of
         # dependencies
@@ -502,6 +514,8 @@ class PublishFilesPlugin(HookBaseClass):
 
         publish_data = item.properties.get("sg_publish_data")
         publish_path = item.properties.get("publish_path")
+        publish_symlink_path = item.properties.get("publish_symlink_path")
+        self._delete_file(publish_symlink_path, item)
         self._delete_files(publish_path, item)
         if publish_data:
             try:
@@ -632,6 +646,58 @@ class PublishFilesPlugin(HookBaseClass):
                 "No publish_path_template defined. Publishing in place.")
 
         return publish_path
+
+    def _get_publish_symlink_path(self, item, task_settings):
+        """
+        Get a publish symlink path for the supplied item.
+
+        :param item: The item to determine the publish type for
+
+        :return: A string representing the symlink path to supply when
+            registering a publish for the supplied item
+
+        Extracts the publish symlink path via the configured publish templates
+        if possible.
+        """
+
+        publisher = self.parent
+
+        # Start with the item's fields
+        fields = copy.copy(item.properties.get("fields", {}))
+
+        publish_symlink_template = task_settings.get("publish_symlink_template")
+        publish_symlink_path = None
+
+        # If a template is defined, get the publish symlink path from it
+        if publish_symlink_template:
+
+            pub_symlink_tmpl = publisher.get_template_by_name(publish_symlink_template)
+            if not pub_symlink_tmpl:
+                # this template was not found in the template config!
+                raise TankError("The Template '%s' does not exist!" % publish_symlink_template)
+
+            # First get the fields from the context
+            try:
+                fields.update(item.context.as_template_fields(pub_symlink_tmpl))
+            except TankError, e:
+                self.logger.debug(
+                    "Unable to get context fields for publish_symlink_template.")
+
+            missing_keys = pub_symlink_tmpl.missing_keys(fields, True)
+            if missing_keys:
+                raise TankError(
+                    "Cannot resolve publish_symlink_template (%s). Missing keys: %s" %
+                            (publish_symlink_template, pprint.pformat(missing_keys))
+                )
+
+            # Apply fields to publish_symlink_template to get publish symlink path
+            publish_symlink_path = pub_symlink_tmpl.apply_fields(fields)
+            self.logger.debug(
+                "Used publish_symlink_template to determine the publish path: %s" %
+                (publish_symlink_path,)
+            )
+
+        return publish_symlink_path
 
 
     def _get_publish_version(self, item, task_settings):
