@@ -23,7 +23,7 @@ HookBaseClass = sgtk.get_hook_baseclass()
 DEFAULT_ITEM_TYPE_SETTINGS = {
     "file.alembic": {
         "publish_type": "Alembic Cache",
-        "publish_linked_entity_name_template": None,
+        "publish_name_template": None,
         "publish_path_template": None
     },
     "file.3dsmax": {
@@ -412,6 +412,7 @@ class PublishFilesPlugin(HookBaseClass):
                     "label": "Show Info",
                     "tooltip": "Show more info",
                     "text": "Publish Name: %s" % (item.properties["publish_name"],) + "\n" +
+                            "Linked Entity Name: %s" % (item.properties["publish_linked_entity_name"],) + "\n" +
                             "Publish Path: %s" % (item.properties["publish_path"],) + "\n" +
                             "Publish Symlink Path: %s" % (item.properties["publish_symlink_path"],)
                 }
@@ -494,7 +495,6 @@ class PublishFilesPlugin(HookBaseClass):
                 **publish_data)
             self.logger.info("Publish registered!")
         except Exception:
-            self.undo(task_settings, item)
             self.logger.error(
                 "Couldn't register Publish for %s" % item.name,
                 extra={
@@ -505,6 +505,9 @@ class PublishFilesPlugin(HookBaseClass):
                     }
                 }
             )
+
+        if not item.properties.get("sg_publish_data"):
+            self.undo(task_settings, item)
 
 
     def undo(self, task_settings, item):
@@ -519,14 +522,21 @@ class PublishFilesPlugin(HookBaseClass):
         :param item: Item to process
         """
 
+        self.logger.info("Cleaning up copied files...")
         publish_data = item.properties.get("sg_publish_data")
         publish_path = item.properties.get("publish_path")
         publish_symlink_path = item.properties.get("publish_symlink_path")
-        self._delete_file(publish_symlink_path, item)
+
+        if publish_symlink_path:
+            self._delete_files(publish_symlink_path, item)
+
         self._delete_files(publish_path, item)
+
         if publish_data:
             try:
                 self.sgtk.shotgun.delete(publish_data["type"], publish_data["id"])
+                # pop the sg_publish_data too
+                item.properties.pop("sg_publish_data")
             except Exception:
                 self.logger.error(
                     "Failed to delete PublishedFile Entity for %s" % item.name,
@@ -778,8 +788,6 @@ class PublishFilesPlugin(HookBaseClass):
         Get the linked entity name for the supplied item.
 
         :param item: The item to determine the publish version for
-
-        Uses the path info hook to retrieve the publish name.
         """
 
         publisher = self.parent
