@@ -229,6 +229,12 @@ class PublishFilesPlugin(HookBaseClass):
                 "fields": ["context", "*"],
                 "allows_empty": True,
             },
+            "publish_linked_entity_name_template": {
+                "type": "template",
+                "description": "",
+                "fields": ["context", "version", "[output]", "[name]", "*"],
+                "allows_empty": True,
+            },
             "additional_publish_fields": {
                 "type": "dict",
                 "values": {
@@ -316,7 +322,8 @@ class PublishFilesPlugin(HookBaseClass):
 
         # ---- validate the settings required to publish
 
-        attr_list = ("publish_type", "publish_path", "publish_name", "publish_version", "publish_symlink_path")
+        attr_list = ("publish_type", "publish_path", "publish_name", "publish_version",
+                     "publish_symlink_path", "publish_linked_entity_name")
         for attr in attr_list:
             try:
                 method = getattr(self, "_get_%s" % attr)
@@ -405,6 +412,7 @@ class PublishFilesPlugin(HookBaseClass):
                     "label": "Show Info",
                     "tooltip": "Show more info",
                     "text": "Publish Name: %s" % (item.properties["publish_name"],) + "\n" +
+                            "Linked Entity Name: %s" % (item.properties["publish_linked_entity_name"],) + "\n" +
                             "Publish Path: %s" % (item.properties["publish_path"],) + "\n" +
                             "Publish Symlink Path: %s" % (item.properties["publish_symlink_path"],)
                 }
@@ -487,7 +495,6 @@ class PublishFilesPlugin(HookBaseClass):
                 **publish_data)
             self.logger.info("Publish registered!")
         except Exception:
-            self.undo(task_settings, item)
             self.logger.error(
                 "Couldn't register Publish for %s" % item.name,
                 extra={
@@ -498,6 +505,9 @@ class PublishFilesPlugin(HookBaseClass):
                     }
                 }
             )
+
+        if not item.properties.get("sg_publish_data"):
+            self.undo(task_settings, item)
 
 
     def undo(self, task_settings, item):
@@ -512,14 +522,21 @@ class PublishFilesPlugin(HookBaseClass):
         :param item: Item to process
         """
 
+        self.logger.info("Cleaning up copied files...")
         publish_data = item.properties.get("sg_publish_data")
         publish_path = item.properties.get("publish_path")
         publish_symlink_path = item.properties.get("publish_symlink_path")
-        self._delete_file(publish_symlink_path, item)
+
+        if publish_symlink_path:
+            self._delete_files(publish_symlink_path, item)
+
         self._delete_files(publish_path, item)
+
         if publish_data:
             try:
                 self.sgtk.shotgun.delete(publish_data["type"], publish_data["id"])
+                # pop the sg_publish_data too
+                item.properties.pop("sg_publish_data")
             except Exception:
                 self.logger.error(
                     "Failed to delete PublishedFile Entity for %s" % item.name,
@@ -765,3 +782,46 @@ class PublishFilesPlugin(HookBaseClass):
                 "Retrieved publish_name via source file path.")
 
         return publish_name
+
+    def _get_publish_linked_entity_name(self, item, task_settings):
+        """
+        Get the linked entity name for the supplied item.
+
+        :param item: The item to determine the publish version for
+        """
+
+        publisher = self.parent
+
+        # Start with the item's fields
+        fields = copy.copy(item.properties.get("fields", {}))
+
+        publish_linked_entity_name_template = task_settings.get("publish_linked_entity_name_template")
+        publish_linked_entity_name = None
+
+        # check if we have a publish_linked_entity_name_template defined
+        if publish_linked_entity_name_template:
+
+            pub_linked_entity_name_tmpl = publisher.get_template_by_name(publish_linked_entity_name_template)
+            if not pub_linked_entity_name_tmpl:
+                # this template was not found in the template config!
+                raise TankError("The Template '%s' does not exist!" % publish_linked_entity_name_template)
+
+            # First get the fields from the context
+            try:
+                fields.update(item.context.as_template_fields(pub_linked_entity_name_tmpl))
+            except TankError, e:
+                self.logger.debug(
+                    "Unable to get context fields for publish_linked_entity_name_template.")
+
+            missing_keys = pub_linked_entity_name_tmpl.missing_keys(fields, True)
+            if missing_keys:
+                raise TankError(
+                    "Cannot resolve publish_linked_entity_name_template (%s). Missing keys: %s" %
+                            (publish_linked_entity_name_template, pprint.pformat(missing_keys))
+                )
+
+            publish_linked_entity_name = pub_linked_entity_name_tmpl.apply_fields(fields)
+            self.logger.debug(
+                "Retrieved publish_linked_entity_name via publish_linked_entity_name_template.")
+
+        return publish_linked_entity_name
