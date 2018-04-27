@@ -78,8 +78,8 @@ class SummaryOverlay(QtGui.QWidget):
         self.ui.label.setText("Publish\nFailed!")
         self.ui.info.setText("For more details, <b><u>click here</u></b>.")
 
-        self.ui.publish_again.hide()
-        self.ui.publish_again.setText("")
+        self.ui.publish_again.setText("To publish again, <b><u>click here</u></b>.")
+        self.ui.publish_again.show()
 
         self.show()
 
