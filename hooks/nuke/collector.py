@@ -17,8 +17,6 @@ HookBaseClass = sgtk.get_hook_baseclass()
 # A look up of node types to parameters for finding outputs to publish
 _NUKE_OUTPUTS = {
     "WriteTank": "file",
-    "Write": "file",
-    "WriteGeo": "file",
 }
 
 
@@ -209,6 +207,7 @@ class NukeSessionCollector(HookBaseClass):
                     param_name = _NUKE_OUTPUTS[node_type]
                     file_path = node[param_name].evaluate()
                     thumbnail = None
+
 
                 # Collect the item if we have a file_path defined
                 if file_path:
