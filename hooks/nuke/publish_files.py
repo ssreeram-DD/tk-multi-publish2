@@ -9,12 +9,14 @@
 # not expressly granted therein are reserved by Shotgun Software Inc.
 
 import os
-import pprint
+import itertools
 import nuke
 import sgtk
 
 HookBaseClass = sgtk.get_hook_baseclass()
 
+# A list of input node types to check as dependencies
+_NUKE_INPUTS = ("Read", "ReadGeo2", "Camera2")
 
 class NukePublishFilesPlugin(HookBaseClass):
     """
@@ -26,7 +28,7 @@ class NukePublishFilesPlugin(HookBaseClass):
         """
         # call base init
         super(NukePublishFilesPlugin, self).__init__(parent, **kwargs)
-        
+
         # cache the review submission app
         self.__write_node_app = self.parent.engine.apps.get("tk-nuke-writenode")
 
@@ -148,7 +150,7 @@ class NukePublishFilesPlugin(HookBaseClass):
             write_node_app = publisher.engine.apps.get("tk-nuke-writenode")
 
             if write_node_app.is_node_render_path_locked(node):
-                # renders for the write node can't be published - trying to publish 
+                # renders for the write node can't be published - trying to publish
                 # will result in an error in the publish hook!
                 self.logger.error("The render path is currently locked and "
                         "does not match the current Work Area.")
@@ -173,7 +175,11 @@ class NukePublishFilesPlugin(HookBaseClass):
             _save_session(sgtk.util.ShotgunPath.normalize(path))
 
             # Store any file dependencies
-            item.properties["publish_dependencies"] = _get_script_dependencies()
+            item.properties["publish_dependencies"] = self._get_publish_dependencies()
+
+        elif "node" in item.properties:
+            # Store any node dependencies
+            item.properties["publish_dependencies"] = self._get_publish_dependencies(item.properties["node"])
 
         super(NukePublishFilesPlugin, self).publish(task_settings, item)
 
@@ -242,26 +248,62 @@ class NukePublishFilesPlugin(HookBaseClass):
         return next_version_path
 
 
-def _get_script_dependencies():
-    """
-    Find all dependencies for the current nuke script
-    """
+    def _get_publish_dependencies(self, node=None):
+        """
+        Find all dependency paths for the current node. If no node specified,
+        will return all dependency paths for the nuke script.
 
-    # figure out all the inputs to the scene and pass them as dependency
-    # candidates
-    dependency_paths = []
-    for read_node in nuke.allNodes("Read"):
-        # make sure we have a file path and normalize it
-        # file knobs set to "" in Python will evaluate to None. This is
-        # different than if you set file to an empty string in the UI, which
-        # will evaluate to ""!
-        file_path = read_node.knob("file").evaluate()
-        if not file_path:
-            continue
-        file_path = sgtk.util.ShotgunPath.normalize(file_path)
-        dependency_paths.append(file_path)
+        :param node: Optional node to process
+        :return: List of upstream dependency paths
+        """
+        publisher = self.parent
 
-    return dependency_paths
+        if node:
+            # Collect all upstream nodes to specified node
+            dep_nodes = _collect_dep_nodes([node])
+        else:
+            # Collect all nodes in this nuke script
+            dep_nodes = nuke.allNodes()
+
+        # Only process nodes that match one of the specified input types
+        input_nodes = [node for node in dep_nodes if node.Class() in _NUKE_INPUTS]
+
+        # figure out all the inputs to the node and pass them as dependency
+        # candidates
+        dependency_paths = []
+        for dep_node in input_nodes:
+            file_path = dep_node.knob('file').evaluate()
+            if not file_path:
+                continue
+
+            file_path = sgtk.util.ShotgunPath.normalize(file_path)
+
+            # Check if the input path contains a frame number
+            seq_path = publisher.util.get_frame_sequence_path(file_path)
+            if seq_path:
+                # If so, then use the path with the frame number replaced with the frame spec
+                file_path = seq_path
+
+            dependency_paths.append(seq_path)
+
+        return dependency_paths
+
+
+def _collect_dep_nodes(nodes):
+    """
+    For each specified node, traverse the node graph and get any associated upstream nodes.
+
+    :param nodes: List of nodes to process
+    :return: List of upstream dependency nodes
+    """
+    dependency_list = list(itertools.chain(*(node.dependencies() for node in nodes)))
+    if dependency_list:
+        depends = _collect_dep_nodes(dependency_list)
+        for item in depends:
+            nodes.append(item)
+
+    # Remove duplicates
+    return list(set(nodes))
 
 
 def _save_session(path):

@@ -448,11 +448,14 @@ class PublishFilesPlugin(HookBaseClass):
         if publish_symlink_path:
             self._symlink_files(item)
 
-        # if the parent item has a publish path, include it in the list of
-        # dependencies
+        # Get any upstream dependency paths
         dependency_paths = item.properties.get("publish_dependencies", [])
-        if "sg_publish_path" in item.parent.properties:
-            dependency_paths.append(item.parent.properties["sg_publish_path"])
+
+        # If the parent item has publish data, include those ids in the
+        # list of dependencies as well
+        dependency_ids = []
+        if "sg_publish_data" in item.parent.properties:
+            dependency_ids = [item.parent.properties["sg_publish_data"]["id"]]
 
         # get any additional_publish_fields that have been defined
         sg_fields = {}
@@ -472,6 +475,7 @@ class PublishFilesPlugin(HookBaseClass):
             "version_number": publish_version,
             "thumbnail_path": item.get_thumbnail_as_path() or "",
             "published_file_type": publish_type,
+            "dependency_ids": dependency_ids,
             "dependency_paths": dependency_paths,
             "sg_fields": sg_fields
         }
