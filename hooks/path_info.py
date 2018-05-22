@@ -147,7 +147,8 @@ class BasicPathInfo(HookBaseClass):
             return None
 
         # Return the parsed frame number
-        return int(frame_pattern_match.group(3))
+        # return it as a string to preserve the frame padding!
+        return frame_pattern_match.group(3)
 
     def get_path_for_frame(self, path, frame_num, frame_spec=None):
         """

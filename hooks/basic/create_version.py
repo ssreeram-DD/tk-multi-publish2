@@ -292,8 +292,8 @@ class CreateVersionPlugin(HookBaseClass):
 
         # Determine if this is a sequence of paths
         if item.properties["is_sequence"]:
-            first_frame = publisher.util.get_frame_number(item.properties["sequence_paths"][0])
-            last_frame = publisher.util.get_frame_number(item.properties["sequence_paths"][-1])
+            first_frame = int(publisher.util.get_frame_number(item.properties["sequence_paths"][0]))
+            last_frame = int(publisher.util.get_frame_number(item.properties["sequence_paths"][-1]))
         else:
             first_frame = last_frame = 0
 
