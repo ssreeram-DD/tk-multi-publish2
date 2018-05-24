@@ -492,13 +492,15 @@ class PublishFilesPlugin(HookBaseClass):
             }
         )
 
+        exception = None
         # create the publish and stash it in the item properties for other
         # plugins to use.
         try:
             item.properties["sg_publish_data"] = sgtk.util.register_publish(
                 **publish_data)
             self.logger.info("Publish registered!")
-        except Exception:
+        except Exception as e:
+            exception = e
             self.logger.error(
                 "Couldn't register Publish for %s" % item.name,
                 extra={
@@ -513,6 +515,8 @@ class PublishFilesPlugin(HookBaseClass):
         if not item.properties.get("sg_publish_data"):
             self.undo(task_settings, item)
 
+        if exception:
+            raise exception
 
     def undo(self, task_settings, item):
         """

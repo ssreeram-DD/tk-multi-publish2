@@ -284,7 +284,7 @@ class NukePublishFilesPlugin(HookBaseClass):
                 # If so, then use the path with the frame number replaced with the frame spec
                 file_path = seq_path
 
-            dependency_paths.append(seq_path)
+            dependency_paths.append(file_path)
 
         return dependency_paths
 
