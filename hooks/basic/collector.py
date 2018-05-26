@@ -206,15 +206,15 @@ class FileCollectorPlugin(HookBaseClass):
         :param item: The Item instance
         """
 
-        path = item.properties["path"]
-        is_sequence = item.properties["is_sequence"]
+        path = item.properties.path
+        is_sequence = item.properties.is_sequence
 
         item_info = self._get_item_info(settings, path, is_sequence)
 
-        item.properties["work_path_template"] = self._resolve_work_path_template(item_info, path)
+        item.properties.work_path_template = self._resolve_work_path_template(item_info, path)
 
         # Set the item's fields property
-        item.properties["fields"] = self._resolve_item_fields(item)
+        item.properties.fields = self._resolve_item_fields(item)
 
 
     def _resolve_work_path_template(self, properties, path):
@@ -613,7 +613,7 @@ class FileCollectorPlugin(HookBaseClass):
             return None
 
         if "fields" in item.properties:
-            name_field = item.properties["fields"].get("name")
+            name_field = item.properties.fields.get("name")
             if name_field:
                 return name_field
 
@@ -670,10 +670,10 @@ class FileCollectorPlugin(HookBaseClass):
         Intended to be overridden by DCC-specific subclasses.
         """
         publisher = self.parent
-        if item.properties["is_sequence"]:
-            path = item.properties["sequence_paths"][0]
+        if item.properties.is_sequence:
+            path = item.properties.sequence_paths[0]
         else:
-            path = item.properties["path"]
+            path = item.properties.path
 
         fields = {}
 
@@ -719,7 +719,7 @@ class FileCollectorPlugin(HookBaseClass):
             fields["extension"] = file_info["extension"]
 
         # Force use of %d format
-        if item.properties["is_sequence"]:
+        if item.properties.is_sequence:
             fields["SEQ"] = "FORMAT: %d"
 
         # use %V - full view printout as default for the eye field
