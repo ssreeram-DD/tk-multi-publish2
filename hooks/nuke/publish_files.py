@@ -12,6 +12,7 @@ import os
 import itertools
 import nuke
 import sgtk
+import itertools
 
 HookBaseClass = sgtk.get_hook_baseclass()
 
@@ -257,19 +258,26 @@ class NukePublishFilesPlugin(HookBaseClass):
         publisher = self.parent
 
         if node:
+            allnodes = nuke.allNodes()
+            visited = {nodes: 0 for nodes in allnodes}
             # Collect all upstream nodes to specified node
-            dep_nodes = _collect_dep_nodes([node])
+            dep_nodes = []
+            input_nodes = _collect_dep_nodes(node, visited, dep_nodes)
         else:
             # Collect all nodes in this nuke script
-            dep_nodes = nuke.allNodes()
+            # dep_nodes = nuke.allNodes()
+            input_node_lists = [nuke.allNodes(node) for node in _NUKE_INPUTS]
+            input_nodes = list(itertools.chain(*(node for node in input_node_lists)))
 
         # Only process nodes that match one of the specified input types
-        input_nodes = [node for node in dep_nodes if node.Class() in _NUKE_INPUTS]
+        # input_nodes = [node for node in dep_nodes if node.Class() in _NUKE_INPUTS]
 
         # figure out all the inputs to the node and pass them as dependency
         # candidates
         dependency_paths = []
         for dep_node in input_nodes:
+            if dep_node['disable'].value() == 1:
+                continue
             file_path = dep_node.knob('file').evaluate()
             if not file_path:
                 continue
@@ -287,21 +295,31 @@ class NukePublishFilesPlugin(HookBaseClass):
         return dependency_paths
 
 
-def _collect_dep_nodes(nodes):
+def _collect_dep_nodes(node, visited, dep_nodes):
     """
     For each specified node, traverse the node graph and get any associated upstream nodes.
 
     :param nodes: List of nodes to process
     :return: List of upstream dependency nodes
     """
-    dependency_list = list(itertools.chain(*(node.dependencies() for node in nodes)))
-    if dependency_list:
-        depends = _collect_dep_nodes(dependency_list)
-        for item in depends:
-            nodes.append(item)
-
-    # Remove duplicates
-    return list(set(nodes))
+    # dependency_list = list(itertools.chain(*(node.dependencies() for node in nodes)))
+    # if dependency_list:
+    #     depends = _collect_dep_nodes(dependency_list)
+    #     for item in depends:
+    #         nodes.append(item)
+    #
+    # # Remove duplicates
+    # return list(set(nodes))
+    if visited[node] == 0:
+        if node.Class() in _NUKE_INPUTS and (node['disable'].value() == 0):
+            dep_nodes.append(node)
+        # set visited to 1 for the node so as not to revisit
+        visited[node] = 1
+        dep = node.dependencies()
+        if dep:
+            for item in dep:
+                _collect_dep_nodes(item, visited, dep_nodes)
+    return dep_nodes
 
 
 def _save_session(path):
