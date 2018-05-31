@@ -201,7 +201,7 @@ class NukePublishFilesPlugin(HookBaseClass):
 
         # insert the path into the properties
         if item.type == 'file.nuke':
-            item.properties["next_version_path"] = self._bump_file_version(path)
+            item.properties.next_version_path = self._bump_file_version(path)
 
 
     def _bump_file_version(self, path):
