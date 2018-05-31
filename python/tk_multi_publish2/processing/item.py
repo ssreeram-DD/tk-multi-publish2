@@ -54,7 +54,7 @@ class Item(object):
         self._children = []
         self._tasks = []
         self._context = None
-        self._global_properties = properties or _ItemProperties()
+        self._global_properties = _ItemProperties(properties) if properties else _ItemProperties()
         self._local_properties = {}
         self._description = None
         self._created_temp_files = []
