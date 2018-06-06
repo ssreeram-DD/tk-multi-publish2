@@ -477,6 +477,7 @@ class PublishFilesPlugin(HookBaseClass):
             "context": item.context,
             "comment": item.description,
             "path": publish_path,
+            "sg_path_to_source": item.properties.path,
             "name": publish_name,
             "version_number": publish_version,
             "thumbnail_path": item.get_thumbnail_as_path() or "",
