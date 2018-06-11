@@ -470,14 +470,16 @@ class PublishFilesPlugin(HookBaseClass):
             if template_key in item.properties.fields:
                 sg_fields[sg_field] = item.properties.fields[template_key]
 
+        # 769: update sg_path_to_source field
+        sg_fields["sg_path_to_source"] = item.properties.path
+
         # arguments for publish registration
         self.logger.info("Registering publish...")
-        publish_data= {
+        publish_data = {
             "tk": publisher.sgtk,
             "context": item.context,
             "comment": item.description,
             "path": publish_path,
-            "sg_path_to_source": item.properties.path,
             "name": publish_name,
             "version_number": publish_version,
             "thumbnail_path": item.get_thumbnail_as_path() or "",
