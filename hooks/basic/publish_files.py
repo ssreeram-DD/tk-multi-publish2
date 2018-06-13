@@ -377,38 +377,40 @@ class PublishFilesPlugin(HookBaseClass):
                 }
             )
 
-        # ---- ensure the published file(s) don't already exist on disk
+        # this means it's an in-place publish
+        if item.properties.publish_path != item.properties.path:
 
-        conflict_info = None
-        if item.properties.is_sequence:
-            seq_pattern = publisher.util.get_path_for_frame(item.properties.publish_path, "*")
-            seq_files = [f for f in glob.iglob(seq_pattern) if os.path.isfile(f)]
+            # ---- ensure the published file(s) don't already exist on disk
+            conflict_info = None
+            if item.properties.is_sequence:
+                seq_pattern = publisher.util.get_path_for_frame(item.properties.publish_path, "*")
+                seq_files = [f for f in glob.iglob(seq_pattern) if os.path.isfile(f)]
 
-            if seq_files:
-                conflict_info = (
-                    "The following files already exist!<br>"
-                    "<pre>%s</pre>" % (pprint.pformat(seq_files),)
-                )
-        else:
-            if os.path.exists(item.properties.publish_path):
-                conflict_info = (
-                    "The following file already exists!<br>"
-                    "<pre>%s</pre>" % (item.properties.publish_path,)
-                )
+                if seq_files:
+                    conflict_info = (
+                        "The following files already exist!<br>"
+                        "<pre>%s</pre>" % (pprint.pformat(seq_files),)
+                    )
+            else:
+                if os.path.exists(item.properties.publish_path):
+                    conflict_info = (
+                        "The following file already exists!<br>"
+                        "<pre>%s</pre>" % (item.properties.publish_path,)
+                    )
 
-        if conflict_info:
-            self.logger.error(
-                "Version '%s' of this file already exists on disk." %
-                    (item.properties.publish_version,),
-                extra={
-                    "action_show_more_info": {
-                        "label": "Show Conflicts",
-                        "tooltip": "Show the conflicting published files",
-                        "text": conflict_info
+            if conflict_info:
+                self.logger.error(
+                    "Version '%s' of this file already exists on disk." %
+                        (item.properties.publish_version,),
+                    extra={
+                        "action_show_more_info": {
+                            "label": "Show Conflicts",
+                            "tooltip": "Show the conflicting published files",
+                            "text": conflict_info
+                        }
                     }
-                }
-            )
-            return False
+                )
+                return False
 
         self.logger.info(
             "A Publish will be created for item '%s'." %
@@ -448,7 +450,9 @@ class PublishFilesPlugin(HookBaseClass):
         publish_version       = item.properties.publish_version
 
         # handle copying of work to publish
-        self._copy_files(publish_path, item)
+        # do not copy in case of in-place publish!
+        if publish_path != item.properties.path:
+            self._copy_files(publish_path, item)
 
         # symlink the files if it's defined in publish templates
         if publish_symlink_path:
