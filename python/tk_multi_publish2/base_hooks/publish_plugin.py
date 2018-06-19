@@ -9,6 +9,7 @@
 # not expressly granted therein are reserved by Shotgun Software Inc.
 
 import os
+import stat
 import traceback
 import pprint
 import sgtk
@@ -641,7 +642,8 @@ class PublishPlugin(PluginBase):
             try:
                 dest_folder = os.path.dirname(dest_file)
                 ensure_folder_exists(dest_folder)
-                copy_file(work_file, dest_file)
+                copy_file(work_file, dest_file,
+                          permissions=stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
             except Exception as e:
                 raise Exception(
                     "Failed to copy work file from '%s' to '%s'.\n%s" %
