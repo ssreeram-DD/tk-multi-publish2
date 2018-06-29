@@ -473,6 +473,9 @@ class PublishFilesPlugin(HookBaseClass):
         # 769: update sg_path_to_source field
         sg_fields["sg_path_to_source"] = item.properties.path
 
+        # override the input path to review submit version creation
+        item.properties.input_path_override = publish_path
+
         # arguments for publish registration
         self.logger.info("Registering publish...")
         publish_data = {
@@ -539,7 +542,7 @@ class PublishFilesPlugin(HookBaseClass):
         :param item: Item to process
         """
 
-        self.logger.info("Cleaning up copied files...")
+        self.logger.info("Cleaning up copied files for %s..." % item.name)
         publish_data = item.properties.get("sg_publish_data")
         publish_path = item.properties.get("publish_path")
         publish_symlink_path = item.properties.get("publish_symlink_path")

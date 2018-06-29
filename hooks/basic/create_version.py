@@ -11,6 +11,7 @@
 import os
 import copy
 import sgtk
+import traceback
 
 HookBaseClass = sgtk.get_hook_baseclass()
 
@@ -216,8 +217,25 @@ class CreateVersionPlugin(HookBaseClass):
         """
 
         sg_publish_data = []
+        pre_processed_paths = []
+
         if "sg_publish_data" in item.properties:
             sg_publish_data.append(item.properties.sg_publish_data)
+
+        if "sg_publish_data_list" in item.properties:
+            sg_publish_data.extend(item.properties.sg_publish_data_list)
+
+        if "pre_processed_paths" in item.properties:
+            pre_processed_paths.extend(item.properties.pre_processed_paths)
+
+        # instead of assuming what sg_publish_data to use, we can use input_path_override
+        # this will change the path of the frames that go as input to version creation.
+        if "input_path_override" in item.properties:
+            input_path = item.properties.input_path_override
+        else:
+            # by default let it point to the input path.
+            # if a hook wants to override this, it can use input_path_override
+            input_path = item.properties.path
 
         colorspace = self._get_colorspace(task_settings, item)
         first_frame, last_frame = self._get_frame_range(task_settings, item)
@@ -231,24 +249,87 @@ class CreateVersionPlugin(HookBaseClass):
         # set review_submission app's env/context based on item (ingest)
         self.__review_submission_app.change_context(item.context)
 
-        sg_version = self.__review_submission_app.render_and_submit_path(
-            item.properties.path,
-            fields,
-            first_frame,
-            last_frame,
-            sg_publish_data,
-            item.context.task,
-            item.description,
-            item.get_thumbnail_as_path(),
-            self._progress_cb,
-            colorspace
-        )
+        exception = None
+        sg_version = None
+        try:
+
+            # let's check if the pre-processed paths also contain rendered the movie
+            if pre_processed_paths:
+                movie_path = self._get_movie_path(task_settings, item)
+                # movie has already been rendered by a previous hook, just submit it as a version
+                if movie_path in pre_processed_paths:
+                    self.logger.info("Found a movie in pre processed paths, creating a version...")
+                    sg_version = self.__review_submission_app.submit_version(input_path, movie_path, fields,
+                                                                             first_frame, last_frame, sg_publish_data,
+                                                                             item.context.task, item.description,
+                                                                             item.get_thumbnail_as_path(),
+                                                                             self._progress_cb, colorspace)
+                else:
+                    raise Exception("tk-multi-reviewsubmission not configured to render movie!")
+            # there are no pre-processed paths, so none of the hooks ran review submit.
+            # This could mean two things, nuke hook is only supposed to process movies
+            # and none of the hooks that rely on multi review submit were used for this publish, or
+            # we are using the default hook, which anyways only processes movies.
+            else:
+                sg_version = self.__review_submission_app.render_and_submit_path(input_path, fields, first_frame,
+                                                                                 last_frame, sg_publish_data,
+                                                                                 item.context.task, item.description,
+                                                                                 item.get_thumbnail_as_path(),
+                                                                                 self._progress_cb, colorspace)
+        except Exception as e:
+            exception = e
+            self.logger.error(
+                "Couldn't Create Version for %s" % item.name,
+                extra={
+                    "action_show_more_info": {
+                        "label": "Show Error Log",
+                        "tooltip": "Show the error log",
+                        "text": traceback.format_exc()
+                    }
+                }
+            )
+
+        # delete the rendered movie if any.
+        if not sg_version:
+            self.undo(task_settings, item)
+
+        if exception:
+            raise exception
 
         # stash the version info in the item just in case
         item.properties.sg_version_data = sg_version
 
         self.logger.info("Version Creation complete!")
 
+    def undo(self, task_settings, item):
+        """
+        Execute the undo method. This method will
+        delete the files that have been copied to the disk
+        it will also delete any PublishedFile entity that got created due to the publish.
+
+        :param task_settings: Dictionary of Settings. The keys are strings, matching
+            the keys returned in the task_settings property. The values are `Setting`
+            instances.
+        :param item: Item to process
+        """
+
+        movie_path = self._get_movie_path(task_settings, item)
+        if os.path.exists(movie_path):
+            self.logger.info("Cleaning up rendered movie for %s..." % item.name)
+
+            try:
+                os.unlink(movie_path)
+            except Exception:
+                self.logger.error(
+                    "Failed to delete Rendered Movie for %s" % item.name,
+                    extra={
+                        "action_show_more_info": {
+                            "label": "Show Error Log",
+                            "tooltip": "Show the error log",
+                            "text": traceback.format_exc()
+                        }
+                    }
+                )
 
     def finalize(self, task_settings, item):
         """
@@ -277,12 +358,33 @@ class CreateVersionPlugin(HookBaseClass):
     ############################################################################
     # protected methods
 
+    def _get_movie_path(self, task_settings, item):
+        """
+        Returns the path of the movie that's supposed to be output of review submit.
+        """
+
+        # Make sure we don't overwrite the item's fields
+        fields = copy.copy(item.properties.fields)
+        # Update with the fields from the context
+        fields.update(item.context.as_template_fields())
+
+        # Movie output width and height
+        width = self.__review_submission_app.get_setting("movie_width")
+        height = self.__review_submission_app.get_setting("movie_height")
+        fields["width"] = width
+        fields["height"] = height
+
+        # Get an output path for the movie.
+        output_path_template = self.__review_submission_app.get_template("movie_path_template")
+        output_path = output_path_template.apply_fields(fields)
+
+        return output_path
+
     def _get_colorspace(self, task_settings, item):
         """
         Intended to be overridden by subclasses
         """
         return None
-
 
     def _get_frame_range(self, task_settings, item):
         """
@@ -299,18 +401,17 @@ class CreateVersionPlugin(HookBaseClass):
 
         return (first_frame, last_frame)
 
-
-    def _progress_cb(self, percent, msg=None, stage=None):
+    def _progress_cb(self, msg=None, stage=None):
         """
         """
         # if stage matches a task then we want to include
         # the task details at the start of the message:
-        if msg != None:
+        if msg is not None:
             try:
                 item_name = stage["item"]["name"]
                 output_name = stage["output"]["name"]
 
                 # update message to include task info:
-                self.logger.debug("%s - %s: %s" % (output_name, item_name, msg))
+                self.logger.info("%s - %s: %s" % (output_name, item_name, msg))
             except:
                 pass
