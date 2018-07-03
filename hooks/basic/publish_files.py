@@ -473,9 +473,6 @@ class PublishFilesPlugin(HookBaseClass):
         # 769: update sg_path_to_source field
         sg_fields["sg_path_to_source"] = item.properties.path
 
-        # override the input path to review submit version creation
-        item.properties.input_path_override = publish_path
-
         # arguments for publish registration
         self.logger.info("Registering publish...")
         publish_data = {

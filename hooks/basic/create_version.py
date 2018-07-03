@@ -177,7 +177,6 @@ class CreateVersionPlugin(HookBaseClass):
         # return the accepted info
         return accept_data
 
-
     def validate(self, task_settings, item):
         """
         Validates the given item to check that it is ok to publish. Returns a
@@ -205,7 +204,6 @@ class CreateVersionPlugin(HookBaseClass):
 
         return True
 
-
     def publish(self, task_settings, item):
         """
         Executes the publish logic for the given item and settings.
@@ -228,14 +226,8 @@ class CreateVersionPlugin(HookBaseClass):
         if "pre_processed_paths" in item.properties:
             pre_processed_paths.extend(item.properties.pre_processed_paths)
 
-        # instead of assuming what sg_publish_data to use, we can use input_path_override
-        # this will change the path of the frames that go as input to version creation.
-        if "input_path_override" in item.properties:
-            input_path = item.properties.input_path_override
-        else:
-            # by default let it point to the input path.
-            # if a hook wants to override this, it can use input_path_override
-            input_path = item.properties.path
+        # path to frames should point to the primary publish file. #766
+        path_to_frames = item.properties.publish_path
 
         colorspace = self._get_colorspace(task_settings, item)
         first_frame, last_frame = self._get_frame_range(task_settings, item)
@@ -259,19 +251,21 @@ class CreateVersionPlugin(HookBaseClass):
                 # movie has already been rendered by a previous hook, just submit it as a version
                 if movie_path in pre_processed_paths:
                     self.logger.info("Found a movie in pre processed paths, creating a version...")
-                    sg_version = self.__review_submission_app.submit_version(input_path, movie_path, fields,
+                    sg_version = self.__review_submission_app.submit_version(path_to_frames, movie_path, fields,
                                                                              first_frame, last_frame, sg_publish_data,
                                                                              item.context.task, item.description,
                                                                              item.get_thumbnail_as_path(),
                                                                              self._progress_cb, colorspace)
                 else:
-                    raise Exception("tk-multi-reviewsubmission not configured to render movie!")
+                    # this case should never happen since the templates are setup by TDs
+                    # But if it does, this is just a safety net.
+                    raise Exception("tk-multi-reviewsubmission not configured to render movie! Please contact your TD.")
             # there are no pre-processed paths, so none of the hooks ran review submit.
             # This could mean two things, nuke hook is only supposed to process movies
             # and none of the hooks that rely on multi review submit were used for this publish, or
             # we are using the default hook, which anyways only processes movies.
             else:
-                sg_version = self.__review_submission_app.render_and_submit_path(input_path, fields, first_frame,
+                sg_version = self.__review_submission_app.render_and_submit_path(path_to_frames, fields, first_frame,
                                                                                  last_frame, sg_publish_data,
                                                                                  item.context.task, item.description,
                                                                                  item.get_thumbnail_as_path(),
