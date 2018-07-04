@@ -126,7 +126,7 @@ class MayaPublishFilesPlugin(HookBaseClass):
         super(MayaPublishFilesPlugin, self).finalize(task_settings, item)
 
         # only version up the file if the publish went through successfully.
-        if item.properties.get("sg_publish_data"):
+        if item.properties.get("sg_publish_data_list"):
             # insert the path into the properties
             if item.type == 'file.maya':
                 item.properties.next_version_path = self._bump_file_version(path)

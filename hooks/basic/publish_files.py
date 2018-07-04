@@ -139,7 +139,7 @@ class PublishFilesPlugin(HookBaseClass):
 
         publish_path - The location on disk the publish is copied to.
 
-        sg_publish_data - The dictionary of publish information returned from
+        sg_publish_data_list - A list of The dictionary of publish information returned from
             the tk-core register_publish method.
 
     """
@@ -460,8 +460,8 @@ class PublishFilesPlugin(HookBaseClass):
         # If the parent item has publish data, include those ids in the
         # list of dependencies as well
         dependency_ids = []
-        if "sg_publish_data" in item.parent.properties:
-            dependency_ids = [item.parent.properties["sg_publish_data"]["id"]]
+        if "sg_publish_data_list" in item.parent.properties:
+            [dependency_ids.append(sg_publish_data["id"]) for sg_publish_data in item.parent.properties["sg_publish_data_list"]]
 
         # get any additional_publish_fields that have been defined
         sg_fields = {}
@@ -502,11 +502,11 @@ class PublishFilesPlugin(HookBaseClass):
         )
 
         exception = None
+        sg_publish_data = None
         # create the publish and stash it in the item properties for other
         # plugins to use.
         try:
-            item.properties.sg_publish_data = sgtk.util.register_publish(
-                **publish_data)
+            sg_publish_data = sgtk.util.register_publish(**publish_data)
             self.logger.info("Publish registered!")
         except Exception as e:
             exception = e
@@ -521,8 +521,14 @@ class PublishFilesPlugin(HookBaseClass):
                 }
             )
 
-        if not item.properties.get("sg_publish_data"):
+        if not sg_publish_data:
             self.undo(task_settings, item)
+        else:
+            if "sg_publish_data_list" not in item.properties:
+                item.properties.sg_publish_data_list = []
+
+            # add the publish data to item properties
+            item.properties.sg_publish_data_list.append(sg_publish_data)
 
         if exception:
             raise exception
@@ -540,31 +546,43 @@ class PublishFilesPlugin(HookBaseClass):
         """
 
         self.logger.info("Cleaning up copied files for %s..." % item.name)
-        publish_data = item.properties.get("sg_publish_data")
+
+        sg_publish_data_list = item.properties.get("sg_publish_data_list")
         publish_path = item.properties.get("publish_path")
         publish_symlink_path = item.properties.get("publish_symlink_path")
 
         if publish_symlink_path:
             self._delete_files(publish_symlink_path, item)
 
-        self._delete_files(publish_path, item)
+        if publish_path:
+            self._delete_files(publish_path, item)
 
-        if publish_data:
-            try:
-                self.sgtk.shotgun.delete(publish_data["type"], publish_data["id"])
-                # pop the sg_publish_data too
-                item.properties.pop("sg_publish_data")
-            except Exception:
-                self.logger.error(
-                    "Failed to delete PublishedFile Entity for %s" % item.name,
-                    extra={
-                        "action_show_more_info": {
-                            "label": "Show Error Log",
-                            "tooltip": "Show the error log",
-                            "text": traceback.format_exc()
+        if sg_publish_data_list:
+            for publish_data in sg_publish_data_list:
+                try:
+                    self.sgtk.shotgun.delete(publish_data["type"], publish_data["id"])
+                    self.logger.info("Cleaning up published file...",
+                                     extra={
+                                         "action_show_more_info": {
+                                             "label": "Publish Data",
+                                             "tooltip": "Show the publish data.",
+                                             "text": "%s" % publish_data
+                                         }
+                                     }
+                                     )
+                except Exception:
+                    self.logger.error(
+                        "Failed to delete PublishedFile Entity for %s" % item.name,
+                        extra={
+                            "action_show_more_info": {
+                                "label": "Show Error Log",
+                                "tooltip": "Show the error log",
+                                "text": traceback.format_exc()
+                            }
                         }
-                    }
-                )
+                    )
+            # pop the sg_publish_data_list too
+            item.properties.pop("sg_publish_data_list")
 
 
     def finalize(self, task_settings, item):
@@ -579,30 +597,29 @@ class PublishFilesPlugin(HookBaseClass):
         :param item: Item to process
         """
 
-        if "sg_publish_data" in item.properties:
+        if "sg_publish_data_list" in item.properties:
             publisher = self.parent
 
             # get the data for the publish that was just created in SG
-            publish_data = item.properties.sg_publish_data
+            sg_publish_data_list = item.properties.sg_publish_data_list
 
-            # ensure conflicting publishes have their status cleared
-            publisher.util.clear_status_for_conflicting_publishes(
-                item.context, publish_data)
+            for publish_data in sg_publish_data_list:
+                # ensure conflicting publishes have their status cleared
+                publisher.util.clear_status_for_conflicting_publishes(
+                    item.context, publish_data)
 
-            self.logger.info(
-                "Cleared the status of all previous, conflicting publishes")
-
-            path = item.properties.path
-            self.logger.info(
-                "Publish created for file: %s" % (path,),
-                extra={
-                    "action_show_in_shotgun": {
-                        "label": "Show Publish",
-                        "tooltip": "Open the Publish in Shotgun.",
-                        "entity": publish_data
+                self.logger.info(
+                    "Publish created for file: %s" % (publish_data["path"]["local_path"],),
+                    extra={
+                        "action_show_in_shotgun": {
+                            "label": "Show Publish",
+                            "tooltip": "Open the Publish in Shotgun.",
+                            "entity": publish_data
+                        }
                     }
-                }
-            )
+                )
+
+            self.logger.info("Cleared the status of all previous, conflicting publishes")
 
 
     ############################################################################

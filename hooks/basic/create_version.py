@@ -214,14 +214,11 @@ class CreateVersionPlugin(HookBaseClass):
         :param item: Item to process
         """
 
-        sg_publish_data = []
+        sg_publish_data_list = []
         pre_processed_paths = []
 
-        if "sg_publish_data" in item.properties:
-            sg_publish_data.append(item.properties.sg_publish_data)
-
         if "sg_publish_data_list" in item.properties:
-            sg_publish_data.extend(item.properties.sg_publish_data_list)
+            sg_publish_data_list.extend(item.properties.sg_publish_data_list)
 
         if "pre_processed_paths" in item.properties:
             pre_processed_paths.extend(item.properties.pre_processed_paths)
@@ -252,7 +249,7 @@ class CreateVersionPlugin(HookBaseClass):
                 if movie_path in pre_processed_paths:
                     self.logger.info("Found a movie in pre processed paths, creating a version...")
                     sg_version = self.__review_submission_app.submit_version(path_to_frames, movie_path, fields,
-                                                                             first_frame, last_frame, sg_publish_data,
+                                                                             first_frame, last_frame, sg_publish_data_list,
                                                                              item.context.task, item.description,
                                                                              item.get_thumbnail_as_path(),
                                                                              self._progress_cb, colorspace)
@@ -266,7 +263,7 @@ class CreateVersionPlugin(HookBaseClass):
             # we are using the default hook, which anyways only processes movies.
             else:
                 sg_version = self.__review_submission_app.render_and_submit_path(path_to_frames, fields, first_frame,
-                                                                                 last_frame, sg_publish_data,
+                                                                                 last_frame, sg_publish_data_list,
                                                                                  item.context.task, item.description,
                                                                                  item.get_thumbnail_as_path(),
                                                                                  self._progress_cb, colorspace)
