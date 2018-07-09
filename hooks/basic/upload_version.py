@@ -195,9 +195,8 @@ class UploadVersionPlugin(HookBaseClass):
             "sg_task": item.context.task
         }
 
-        if "sg_publish_data" in item.properties:
-            publish_data = item.properties.sg_publish_data
-            version_data["published_files"] = [publish_data]
+        if "sg_publish_data_list" in item.properties:
+            version_data["published_files"] = item.properties.sg_publish_data_list
 
         if task_settings["Link Local File"].value:
             version_data["sg_path_to_movie"] = path

@@ -11,6 +11,7 @@
 import os
 import copy
 import sgtk
+import traceback
 
 HookBaseClass = sgtk.get_hook_baseclass()
 
@@ -176,7 +177,6 @@ class CreateVersionPlugin(HookBaseClass):
         # return the accepted info
         return accept_data
 
-
     def validate(self, task_settings, item):
         """
         Validates the given item to check that it is ok to publish. Returns a
@@ -204,7 +204,6 @@ class CreateVersionPlugin(HookBaseClass):
 
         return True
 
-
     def publish(self, task_settings, item):
         """
         Executes the publish logic for the given item and settings.
@@ -215,9 +214,13 @@ class CreateVersionPlugin(HookBaseClass):
         :param item: Item to process
         """
 
-        sg_publish_data = []
-        if "sg_publish_data" in item.properties:
-            sg_publish_data.append(item.properties.sg_publish_data)
+        sg_publish_data_list = []
+
+        if "sg_publish_data_list" in item.properties:
+            sg_publish_data_list.extend(item.properties.sg_publish_data_list)
+
+        # path to frames should point to the primary publish file. #766
+        path_to_frames = item.properties.publish_path
 
         colorspace = self._get_colorspace(task_settings, item)
         first_frame, last_frame = self._get_frame_range(task_settings, item)
@@ -231,24 +234,68 @@ class CreateVersionPlugin(HookBaseClass):
         # set review_submission app's env/context based on item (ingest)
         self.__review_submission_app.change_context(item.context)
 
-        sg_version = self.__review_submission_app.render_and_submit_path(
-            item.properties.path,
-            fields,
-            first_frame,
-            last_frame,
-            sg_publish_data,
-            item.context.task,
-            item.description,
-            item.get_thumbnail_as_path(),
-            self._progress_cb,
-            colorspace
-        )
+        exception = None
+        sg_version = None
+        try:
+            sg_version = self.__review_submission_app.render_and_submit_path(path_to_frames, fields, first_frame,
+                                                                             last_frame, sg_publish_data_list,
+                                                                             item.context.task, item.description,
+                                                                             item.get_thumbnail_as_path(),
+                                                                             self._progress_cb, colorspace)
+        except Exception as e:
+            exception = e
+            self.logger.error(
+                "Couldn't Create Version for %s" % item.name,
+                extra={
+                    "action_show_more_info": {
+                        "label": "Show Error Log",
+                        "tooltip": "Show the error log",
+                        "text": traceback.format_exc()
+                    }
+                }
+            )
+
+        # delete the rendered movie if any.
+        if not sg_version:
+            self.undo(task_settings, item)
+
+        if exception:
+            raise exception
 
         # stash the version info in the item just in case
         item.properties.sg_version_data = sg_version
 
         self.logger.info("Version Creation complete!")
 
+    def undo(self, task_settings, item):
+        """
+        Execute the undo method. This method will
+        delete the files that have been copied to the disk
+        it will also delete any PublishedFile entity that got created due to the publish.
+
+        :param task_settings: Dictionary of Settings. The keys are strings, matching
+            the keys returned in the task_settings property. The values are `Setting`
+            instances.
+        :param item: Item to process
+        """
+
+        movie_path = self._get_movie_path(task_settings, item)
+        if os.path.exists(movie_path):
+            self.logger.info("Cleaning up rendered movie for %s..." % item.name)
+
+            try:
+                os.unlink(movie_path)
+            except Exception:
+                self.logger.error(
+                    "Failed to delete Rendered Movie for %s" % item.name,
+                    extra={
+                        "action_show_more_info": {
+                            "label": "Show Error Log",
+                            "tooltip": "Show the error log",
+                            "text": traceback.format_exc()
+                        }
+                    }
+                )
 
     def finalize(self, task_settings, item):
         """
@@ -277,12 +324,33 @@ class CreateVersionPlugin(HookBaseClass):
     ############################################################################
     # protected methods
 
+    def _get_movie_path(self, task_settings, item):
+        """
+        Returns the path of the movie that's supposed to be output of review submit.
+        """
+
+        # Make sure we don't overwrite the item's fields
+        fields = copy.copy(item.properties.fields)
+        # Update with the fields from the context
+        fields.update(item.context.as_template_fields())
+
+        # Movie output width and height
+        width = self.__review_submission_app.get_setting("movie_width")
+        height = self.__review_submission_app.get_setting("movie_height")
+        fields["width"] = width
+        fields["height"] = height
+
+        # Get an output path for the movie.
+        output_path_template = self.__review_submission_app.get_template("movie_path_template")
+        output_path = output_path_template.apply_fields(fields)
+
+        return output_path
+
     def _get_colorspace(self, task_settings, item):
         """
         Intended to be overridden by subclasses
         """
         return None
-
 
     def _get_frame_range(self, task_settings, item):
         """
@@ -299,18 +367,17 @@ class CreateVersionPlugin(HookBaseClass):
 
         return (first_frame, last_frame)
 
-
-    def _progress_cb(self, percent, msg=None, stage=None):
+    def _progress_cb(self, msg=None, stage=None):
         """
         """
         # if stage matches a task then we want to include
         # the task details at the start of the message:
-        if msg != None:
+        if msg is not None:
             try:
                 item_name = stage["item"]["name"]
                 output_name = stage["output"]["name"]
 
                 # update message to include task info:
-                self.logger.debug("%s - %s: %s" % (output_name, item_name, msg))
+                self.logger.info("%s - %s: %s" % (output_name, item_name, msg))
             except:
                 pass
