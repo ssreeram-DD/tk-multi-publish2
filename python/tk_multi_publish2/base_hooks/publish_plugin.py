@@ -671,7 +671,7 @@ class PublishPlugin(PluginBase):
                 dest_folder = os.path.dirname(dest_file)
                 ensure_folder_exists(dest_folder)
                 copy_file(work_file, dest_file,
-                          permissions=stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+                          permissions=stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
             except Exception as e:
                 raise Exception(
                     "Failed to copy work file from '%s' to '%s'.\n%s" %
