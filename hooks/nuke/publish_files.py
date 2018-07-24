@@ -16,6 +16,7 @@ import itertools
 
 HookBaseClass = sgtk.get_hook_baseclass()
 
+
 # A list of input node types to check as dependencies
 _NUKE_INPUTS = ("Read", "ReadGeo2", "Camera2")
 
@@ -32,29 +33,6 @@ class NukePublishFilesPlugin(HookBaseClass):
 
         # cache the review submission app
         self.__write_node_app = self.parent.engine.apps.get("tk-nuke-writenode")
-
-    @property
-    def description(self):
-        """
-        Verbose, multi-line description of what the plugin does. This can
-        contain simple html for formatting.
-        """
-
-        desc = super(NukePublishFilesPlugin, self).description
-
-        return desc + "<br><br>" + """
-        After publishing, if a version number is detected in the file, the file
-        will automatically be saved to the next incremental version number.
-        For example, <code>filename.v001.ext</code> will be published and copied
-        to <code>filename.v002.ext</code>
-
-        If the next incremental version of the file already exists on disk, the
-        validation step will produce a warning, and a button will be provided in
-        the logging output which will allow saving the session to the next
-        available version number prior to publishing.
-
-        <br><br><i>NOTE: any amount of version number padding is supported.</i>
-        """
 
     def accept(self, task_settings, item):
         """
@@ -114,36 +92,6 @@ class NukePublishFilesPlugin(HookBaseClass):
         :returns: True if item is valid, False otherwise.
         """
         publisher = self.parent
-        path = item.properties.path
-
-        if item.type == 'file.nuke':
-
-            # if the file has a version number in it, see if the next version exists
-            next_version_path = publisher.util.get_next_version_path(path)
-            if next_version_path and os.path.exists(next_version_path):
-
-                # determine the next available version_number. just keep asking for
-                # the next one until we get one that doesn't exist.
-                while os.path.exists(next_version_path):
-                    next_version_path = publisher.util.get_next_version_path(
-                        next_version_path)
-
-                # now extract the version number of the next available to display
-                # to the user
-                version = publisher.util.get_version_number(next_version_path)
-
-                self.logger.error(
-                    "The next version of this file already exists on disk.",
-                    extra={
-                        "action_button": {
-                            "label": "Save to v%s" % (version,),
-                            "tooltip": "Save to the next available version number, "
-                                       "v%s" % (version,),
-                            "callback": lambda: _save_session(next_version_path)
-                        }
-                    }
-                )
-                return False
 
         # If this is a WriteTank node, check to see if the node path is currently locked
         node = item.properties.get("node")
@@ -169,85 +117,14 @@ class NukePublishFilesPlugin(HookBaseClass):
             instances.
         :param item: Item to process
         """
-        path = item.properties.path
-
-        # ensure the session is saved
-        if item.type == 'file.nuke':
-            _save_session(sgtk.util.ShotgunPath.normalize(path))
-
-            # Store any file dependencies
-            item.properties.publish_dependencies = self._get_publish_dependencies()
-
-        elif "node" in item.properties:
+        if "node" in item.properties:
             # Store any node dependencies
-            item.properties.publish_dependencies = self._get_publish_dependencies(item.properties.node)
+            item.properties.publish_dependency_paths = self._get_dependency_paths(item.properties.node)
 
         super(NukePublishFilesPlugin, self).publish(task_settings, item)
 
 
-    def finalize(self, task_settings, item):
-        """
-        Execute the finalization pass. This pass executes once all the publish
-        tasks have completed, and can for example be used to version up files.
-
-        :param task_settings: Dictionary of Settings. The keys are strings, matching
-            the keys returned in the settings property. The values are `Setting`
-            instances.
-        :param item: Item to process
-        """
-        path = item.properties.path
-
-        super(NukePublishFilesPlugin, self).finalize(task_settings, item)
-
-        # insert the path into the properties
-        if item.type == 'file.nuke':
-            item.properties.next_version_path = self._bump_file_version(path)
-
-
-    def _bump_file_version(self, path):
-        """
-        Save the supplied path to the next version on disk.
-        """
-
-        publisher = self.parent
-        path = sgtk.util.ShotgunPath.normalize(path)
-        version_number = publisher.util.get_version_number(path)
-
-        if version_number is None:
-            self.logger.debug(
-                "No version number detected in the file path. "
-                "Skipping the bump file version step."
-            )
-            return None
-
-        self.logger.info("Incrementing session file version number...")
-
-        next_version_path = publisher.util.get_next_version_path(path)
-
-        # nothing to do if the next version path can't be determined or if it
-        # already exists.
-        if not next_version_path:
-            self.logger.warning("Could not determine the next version path.")
-            return None
-        elif os.path.exists(next_version_path):
-            self.logger.warning(
-                "The next version of the path already exists",
-                extra={
-                    "action_show_folder": {
-                        "path": next_version_path
-                    }
-                }
-            )
-            return None
-
-        # save the session to the new path
-        _save_session(next_version_path)
-        self.logger.info("Session saved as: %s" % (next_version_path,))
-
-        return next_version_path
-
-
-    def _get_publish_dependencies(self, node=None):
+    def _get_dependency_paths(self, node=None):
         """
         Find all dependency paths for the current node. If no node specified,
         will return all dependency paths for the nuke script.
@@ -320,10 +197,3 @@ def _collect_dep_nodes(node, visited, dep_nodes):
             for item in dep:
                 _collect_dep_nodes(item, visited, dep_nodes)
     return dep_nodes
-
-
-def _save_session(path):
-    """
-    Save the current session to the supplied path.
-    """
-    nuke.scriptSaveAs(path, True)

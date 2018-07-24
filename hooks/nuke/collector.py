@@ -14,6 +14,20 @@ import sgtk
 
 HookBaseClass = sgtk.get_hook_baseclass()
 
+# This is a dictionary of file type info that allows the basic collector to
+# identify common production file types and associate them with a display name,
+# item type, and config icon.
+NUKE_ITEM_TYPES = {
+    "nuke.session": {
+        "icon_path": "{self}/hooks/icons/nuke.png",
+        "type_display": "Nuke Session"
+    },
+    "nukestudio.project": {
+        "icon_path": "{self}/hooks/icons/nukestudio.png",
+        "type_display": "NukeStudio Project"
+    }
+}
+
 # A look up of node types to parameters for finding outputs to publish
 _NUKE_OUTPUTS = {
     "WriteTank": "file",
@@ -37,6 +51,30 @@ class NukeSessionCollector(HookBaseClass):
         self.__workfiles_app = self.parent.engine.apps.get("tk-multi-workfiles2")
 
 
+    @property
+    def settings_schema(self):
+        """
+        Dictionary defining the settings that this collector expects to receive
+        through the settings parameter in the process_current_session and
+        process_file methods.
+
+        A dictionary on the following form::
+
+            {
+                "Settings Name": {
+                    "type": "settings_type",
+                    "default_value": "default_value",
+                    "description": "One line description of the setting"
+            }
+
+        The type string should be one of the data types that toolkit accepts as
+        part of its environment configuration.
+        """
+        schema = super(NukeSessionCollector, self).settings_schema
+        schema["Item Types"]["default_value"].update(NUKE_ITEM_TYPES)
+        return schema
+
+
     def process_current_session(self, settings, parent_item):
         """
         Analyzes the current session open in Nuke/NukeStudio and parents a
@@ -52,7 +90,7 @@ class NukeSessionCollector(HookBaseClass):
 
         if hasattr(engine, "studio_enabled") and engine.studio_enabled:
             # running nuke studio.
-            self.collect_current_nukestudio_session(settings, parent_item)
+            items.extend(self.collect_current_nukestudio_session(settings, parent_item))
 
             # since we're in NS, any additional collected outputs will be
             # parented under the root item
@@ -62,8 +100,8 @@ class NukeSessionCollector(HookBaseClass):
             # under the session
             session_item = self.collect_current_nuke_session(settings, parent_item)
 
-        # Add session_item to the list
-        items.append(session_item)
+            # Add session_item to the list
+            items.append(session_item)
 
         # Also collect any output node items
         items.extend(self.collect_node_outputs(settings, session_item))
@@ -80,9 +118,6 @@ class NukeSessionCollector(HookBaseClass):
         :param dict settings: Configured settings for this collector
         :param parent_item: Root item instance
         """
-
-        publisher = self.parent
-
         # get the current path
         file_path = _session_path()
         if not file_path:
@@ -94,15 +129,20 @@ class NukeSessionCollector(HookBaseClass):
                 extra=self._get_save_as_action()
             )
 
-        session_item = super(NukeSessionCollector, self)._add_file_item(
-            settings,
-            parent_item,
-            file_path
-        )
+        # Define the item's properties
+        properties = {}
 
-        if session_item:
-            session_item.name = "Current Nuke Session"
+        session_item = self._add_file_item(settings,
+                                           parent_item,
+                                           file_path,
+                                           False,
+                                           None,
+                                           "Current Nuke Session",
+                                           "nuke.session",
+                                           parent_item.context,
+                                           properties)
 
+        self.logger.info("Collected item: %s" % session_item.name)
         return session_item
 
 
@@ -119,46 +159,43 @@ class NukeSessionCollector(HookBaseClass):
         # hiero module is only available in later versions of nuke
         import hiero.core
 
-        # go ahead and build the path to the icon for use by any projects
-        icon_path = os.path.join(
-            self.disk_location,
-            os.pardir,
-            "icons",
-            "nukestudio.png"
-        )
-
         active_project = hiero.ui.activeSequence().project()
 
+        items = []
         for project in hiero.core.projects():
 
-            # create the session item for the publish hierarchy
-            session_item = parent_item.create_item(
-                "file.nukestudio",
-                "NukeStudio Project",
-                project.name(),
-                collector=self.plugin
-            )
-            session_item.set_icon_from_path(icon_path)
+            # Define the item's properties
+            properties = {}
 
             # add the project object to the properties so that the publish
             # plugins know which open project to associate with this item
-            session_item.properties.project = project
+            properties["project"] = project
+
+            # create the session item for the publish hierarchy
+            project_item = self._add_item(settings,
+                                          parent_item,
+                                          project.name(),
+                                          "nukestudio.project",
+                                          parent_item.context,
+                                          properties)
 
             self.logger.info(
-                "Collected Nuke Studio project: %s" % (project.name(),))
+                "Collected Nuke Studio project: %s" % (project_item.name,))
+            items.append(project_item)
 
             # enable the active project and expand it. other projects are
             # collapsed and disabled.
             if active_project and active_project.guid() == project.guid():
-                session_item.expanded = True
-                session_item.checked = True
+                project_item.expanded = True
+                project_item.checked = True
+                project_item.properties.active = True
             elif active_project:
                 # there is an active project, but this isn't it. collapse and
                 # disable this item
-                session_item.expanded = False
-                session_item.checked = False
+                project_item.expanded = False
+                project_item.checked = False
 
-        return session_item
+        return items
 
 
     def collect_node_outputs(self, settings, parent_item):
@@ -235,32 +272,42 @@ class NukeSessionCollector(HookBaseClass):
         return items
 
 
-    def _resolve_item_fields(self, item):
+    def _resolve_work_path_template(self, settings, item):
         """
-        Helper method used to get fields that might not normally be defined in the context.
-        Intended to be overridden by DCC-specific subclasses.
+        Resolve work_path_template from the collector settings for the specified item.
+
+        :param dict settings: Configured settings for this collector
+        :param item: The Item instance
+        :return: Name of the template.
         """
         node = item.properties.get("node")
         if node and node.Class() == "WriteTank":
             if self.__write_node_app:
                 # Get work_path_template from the write_node app and update fields
-                item.properties.work_path_template = \
-                    self.__write_node_app.get_node_render_template(node).name
+                return self.__write_node_app.get_node_render_template(node).name
             else:
                 self.logger.error("Unable to process item '%s' without "
                         "the tk-nuke_writenode app!" % item.name)
 
         # If this is a nuke session and we have the workfiles app defined...
-        elif item.type == "file.nuke" and self.__workfiles_app:
+        elif item.type == "nuke.session" and self.__workfiles_app:
             # Get work_path_template from the workfiles app for the item's context
             # Note: this needs to happen here instead of during item initialization
             # since the path may change if the context changes
-            item.properties.work_path_template = \
-                self.__workfiles_app.get_work_template(item.context).name
+            return self.__workfiles_app.get_work_template(item.context).name
 
+        return super(NukeSessionCollector, self)._resolve_work_path_template(settings, item)
+
+
+    def _resolve_item_fields(self, settings, item):
+        """
+        Helper method used to get fields that might not normally be defined in the context.
+        Intended to be overridden by DCC-specific subclasses.
+        """
         # Now run the parent resolve method
-        fields = super(NukeSessionCollector, self)._resolve_item_fields(item)
+        fields = super(NukeSessionCollector, self)._resolve_item_fields(settings, item)
 
+        node = item.properties.get("node")
         if node:
             # If not defined, get the height and width from the node
             if "width" not in fields or "height" not in fields:

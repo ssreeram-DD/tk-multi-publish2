@@ -13,11 +13,11 @@ import stat
 import traceback
 import pprint
 import sgtk
-from sgtk.util.filesystem import copy_file, ensure_folder_exists, safe_delete_file, symlink_file
+from sgtk.util import filesystem
 
 from .base import PluginBase
 
-class PublishPlugin(PluginBase):
+class PublishPluginBase(PluginBase):
     """
     This class defines the required interface for a publish plugin. Publish
     plugins are responsible for operating on items collected by the collector
@@ -605,10 +605,11 @@ class PublishPlugin(PluginBase):
         # custom UI to show up in the app
         pass
 
-    ############################################################################
-    # protected methods
 
-    def _copy_files(self, dest_path, item):
+    ############################################################################
+    # protected helper methods
+
+    def _copy_files(self, src_files, dest_path, is_sequence=False):
         """
         This method handles copying an item's path(s) to a designated location.
 
@@ -618,46 +619,41 @@ class PublishPlugin(PluginBase):
 
         publisher = self.parent
 
-        # ---- get a list of files to be copied
-        if item.properties["is_sequence"]:
-            work_files = item.properties.get("sequence_paths", [])
-        else:
-            work_files = [item.properties["path"]]
-
-        # ---- copy the work files to the publish location
+        # ---- copy the src files to the dest location
         processed_files = []
-        for work_file in work_files:
+        for src_file in src_files:
 
-            if item.properties["is_sequence"]:
-                frame_num = publisher.util.get_frame_number(work_file)
+            if is_sequence:
+                frame_num = publisher.util.get_frame_number(src_file)
                 dest_file = publisher.util.get_path_for_frame(dest_path, frame_num)
             else:
                 dest_file = dest_path
 
             # If the file paths are the same, skip...
-            if work_file == dest_file:
+            if src_file == dest_file:
                 continue
 
             # copy the file
             try:
                 dest_folder = os.path.dirname(dest_file)
-                ensure_folder_exists(dest_folder)
-                copy_file(work_file, dest_file,
+                filesystem.ensure_folder_exists(dest_folder)
+                filesystem.copy_file(src_file, dest_file,
                           permissions=stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
             except Exception as e:
                 raise Exception(
-                    "Failed to copy work file from '%s' to '%s'.\n%s" %
-                    (work_file, dest_file, traceback.format_exc())
+                    "Failed to copy file from '%s' to '%s'.\n%s" %
+                    (src_file, dest_file, traceback.format_exc())
                 )
 
             self.logger.debug(
-                "Copied work file '%s' to '%s'." % (work_file, dest_file)
+                "Copied file '%s' to '%s'." % (src_file, dest_file)
             )
             processed_files.append(dest_file)
 
         return processed_files
 
-    def _symlink_files(self, item):
+
+    def _symlink_files(self, src_files, dest_path, is_sequence=False):
         """
         This method handles symlink an item's publish_path to publish_symlink_path,
         assuming publish_symlink_path is already populated.
@@ -668,50 +664,40 @@ class PublishPlugin(PluginBase):
 
         publisher = self.parent
 
-        source_path = item.properties["publish_path"]
-        dest_path = item.properties["publish_symlink_path"]
-
-        # ---- get a list of files to be symlinked
-        if item.properties["is_sequence"]:
-            work_files = item.properties.get("sequence_paths", [])
-        else:
-            work_files = [item.properties["path"]]
-
         # ---- symlink the publish files to the publish symlink path
         processed_files = []
-        for work_file in work_files:
+        for src_file in src_files:
 
-            if item.properties["is_sequence"]:
-                frame_num = publisher.util.get_frame_number(work_file)
-                source_file = publisher.util.get_path_for_frame(source_path, frame_num)
+            if is_sequence:
+                frame_num = publisher.util.get_frame_number(src_file)
                 dest_file = publisher.util.get_path_for_frame(dest_path, frame_num)
             else:
-                source_file = source_path
                 dest_file = dest_path
 
-            # If the symlink paths and publish path are the same, skip...
-            if dest_file == source_file:
+            # If the file paths are the same, skip...
+            if src_file == dest_file:
                 continue
 
             # symlink the file
             try:
                 dest_folder = os.path.dirname(dest_file)
-                ensure_folder_exists(dest_folder)
-                symlink_file(source_file, dest_file)
+                filesystem.ensure_folder_exists(dest_folder)
+                filesystem.symlink_file(src_file, dest_file)
             except Exception as e:
                 raise Exception(
-                    "Failed to symlink published file from '%s' to '%s'.\n%s" %
-                    (source_file, dest_file, traceback.format_exc())
+                    "Failed to link file from '%s' to '%s'.\n%s" %
+                    (src_file, dest_file, traceback.format_exc())
                 )
 
             self.logger.debug(
-                "Symlinked published file '%s' to '%s'." % (source_file, dest_file)
+                "Linked file '%s' to '%s'." % (src_file, dest_file)
             )
             processed_files.append(dest_file)
 
         return processed_files
 
-    def _delete_files(self, deletion_path, item):
+
+    def _delete_files(self, paths_to_delete):
         """
         This method handles deleting an item's path(s) from a designated location.
 
@@ -721,38 +707,24 @@ class PublishPlugin(PluginBase):
 
         publisher = self.parent
 
-        # ---- get a list of files to be deleted
-        if item.properties["is_sequence"]:
-            work_files = item.properties.get("sequence_paths", [])
-        else:
-            work_files = [item.properties["path"]]
-
         # ---- delete the work files from the publish location
-        processed_files = []
-        for work_file in work_files:
+        processed_paths = []
+        for deletion_path in paths_to_delete:
 
-            if item.properties["is_sequence"]:
-                frame_num = publisher.util.get_frame_number(work_file)
-                deletion_file = publisher.util.get_path_for_frame(deletion_path, frame_num)
+            # delete the path
+            if os.path.isdir(deletion_path):
+                filesystem.safe_delete_folder(deletion_path)
+                self.logger.debug("Deleted folder '%s'." % deletion_path)
             else:
-                deletion_file = deletion_path
+                filesystem.safe_delete_file(deletion_path)
+                self.logger.debug("Deleted file '%s'." % deletion_path)
 
-            # If the file paths are the same, skip...
-            if work_file == deletion_file:
-                continue
+            processed_paths.append(deletion_path)
 
-            # delete the file
-            safe_delete_file(deletion_file)
-
-            self.logger.debug(
-                "Deleted publish file '%s'." % deletion_file
-            )
-            processed_files.append(deletion_file)
-
-        return processed_files
+        return processed_paths
 
 
-    def _get_next_version_info(self, path, item, task_settings):
+    def _get_next_version_info(self, path):
         """
         Return the next version of the supplied path.
 
@@ -785,7 +757,7 @@ class PublishPlugin(PluginBase):
         return next_version_path, version
 
 
-    def _save_to_next_version(self, path, item, save_callback):
+    def _save_to_next_version(self, path, save_callback):
         """
         Save the supplied path to the next version on disk.
 
@@ -804,22 +776,26 @@ class PublishPlugin(PluginBase):
         working/session file after publishing.
         """
 
-        (next_version_path, version) = self._get_next_version_info(path, item)
+        publisher = self.parent
+        path = sgtk.util.ShotgunPath.normalize(path)
 
-        if version is None:
+        version_number = publisher.util.get_version_number(path)
+        if version_number is None:
             self.logger.debug(
-                "No version number detected in the publish path. "
+                "No version number detected in the file path. "
                 "Skipping the bump file version step."
             )
             return None
 
         self.logger.info("Incrementing file version number...")
+        next_version_path = publisher.util.get_next_version_path(path)
 
         # nothing to do if the next version path can't be determined or if it
         # already exists.
         if not next_version_path:
             self.logger.warning("Could not determine the next version path.")
             return None
+
         elif os.path.exists(next_version_path):
             self.logger.warning(
                 "The next version of the path already exists",

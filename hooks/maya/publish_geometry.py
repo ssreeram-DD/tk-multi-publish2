@@ -18,7 +18,7 @@ from sgtk.util.filesystem import ensure_folder_exists
 HookBaseClass = sgtk.get_hook_baseclass()
 
 
-DEFAULT_ITEM_TYPE_SETTINGS = {
+MAYA_GEOMETRY_ITEM_TYPE_SETTINGS = {
     "maya.geometry": {
         "publish_type": "Alembic Cache",
         "publish_name_template": None,
@@ -73,7 +73,7 @@ class MayaPublishGeometryPlugin(HookBaseClass):
         """
         schema = super(MayaPublishGeometryPlugin, self).settings_schema
         schema["Item Type Filters"]["default_value"] = ["maya.geometry"]
-        schema["Item Type Settings"]["default_value"] = DEFAULT_ITEM_TYPE_SETTINGS
+        schema["Item Type Settings"]["default_value"] = MAYA_GEOMETRY_ITEM_TYPE_SETTINGS
         return schema
 
 
@@ -135,18 +135,22 @@ class MayaPublishGeometryPlugin(HookBaseClass):
                 "to be exported. You can uncheck this plugin or create "
                 "geometry to export to avoid this error."
             )
+            self.logger.error(error_msg)
             raise TankError(error_msg)
 
         return super(MayaPublishGeometryPlugin, self).validate(task_settings, item)
 
 
-    def _copy_files(self, publish_path, item):
+    def publish_files(self, task_settings, item, publish_path):
         """
         Overrides the inherited method for copying the work file to the publish location
         to instead export out the scene geometry to the publish_path location.
 
-        :param publish_path: The output publish path string
+        :param task_settings: Dictionary of Settings. The keys are strings, matching
+            the keys returned in the settings property. The values are `Setting`
+            instances.
         :param item: Item to process
+        :param publish_path: The output path to publish files to
         """
         publisher = self.parent
 

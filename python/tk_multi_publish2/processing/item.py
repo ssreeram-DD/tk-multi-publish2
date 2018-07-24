@@ -15,7 +15,7 @@ import sgtk
 import tempfile
 
 from .setting import *
-from ..base_hooks import PublishPlugin
+from ..base_hooks import PublishPluginBase
 
 logger = sgtk.platform.get_logger(__name__)
 
@@ -294,7 +294,7 @@ class Item(object):
 
         # try to determine the current publish plugin
         calling_object = inspect.stack()[2][0].f_locals.get("self")
-        if not calling_object or not isinstance(calling_object, PublishPlugin):
+        if not calling_object or not isinstance(calling_object, PublishPluginBase):
             raise AttributeError(
                 "Could not determine the current publish plugin when accessing "
                 "an item's local properties. Item: %s" % (self,))

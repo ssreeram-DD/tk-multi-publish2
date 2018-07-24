@@ -279,7 +279,7 @@ class PublishPlugin(PluginBase):
         """
         return self._bundle.create_hook_instance(
             path,
-            base_class=self._bundle.base_hooks.PublishPlugin,
+            base_class=self._bundle.base_hooks.PublishPluginBase,
             plugin=self
         )
 
@@ -576,7 +576,7 @@ class CollectorPlugin(PluginBase):
         """
         return self._bundle.create_hook_instance(
             path,
-            base_class=self._bundle.base_hooks.CollectorPlugin,
+            base_class=self._bundle.base_hooks.CollectorPluginBase,
             plugin=self
         )
 

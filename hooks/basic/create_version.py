@@ -215,15 +215,18 @@ class CreateVersionPlugin(HookBaseClass):
         :param item: Item to process
         """
 
-        sg_publish_data = []
-        if "sg_publish_data" in item.properties:
-            sg_publish_data.append(item.properties.sg_publish_data)
-
         colorspace = self._get_colorspace(task_settings, item)
         first_frame, last_frame = self._get_frame_range(task_settings, item)
 
         # First copy the item's fields
-        fields = copy.copy(item.properties.fields)
+        fields = copy.copy(item.properties.get("fields", {}))
+
+        sg_publish_data = []
+        if "sg_publish_data" in item.properties:
+            sg_publish_data.append(item.properties.sg_publish_data)
+
+            # Update the version field with the PublishedFile version
+            fields["version"] = item.properties.sg_publish_data["version_number"]
 
         # Update with the fields from the context
         fields.update(item.context.as_template_fields())

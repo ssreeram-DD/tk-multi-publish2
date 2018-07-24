@@ -9,5 +9,5 @@
 # not expressly granted therein are reserved by Shotgun Software Inc.
 
 from .base import PluginBase
-from .collector import CollectorPlugin
-from .publish_plugin import PublishPlugin
+from .collector import CollectorPluginBase
+from .publish_plugin import PublishPluginBase

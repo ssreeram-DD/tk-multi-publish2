@@ -21,6 +21,21 @@ from sgtk import TankError
 HookBaseClass = sgtk.get_hook_baseclass()
 
 
+# This is a dictionary of file type info that allows the basic collector to
+# identify common production file types and associate them with a display name,
+# item type, and config icon.
+MAYA_SESSION_ITEM_TYPES = {
+    "maya.session": {
+        "icon_path": "{self}/hooks/icons/maya.png",
+        "type_display": "Maya Session"
+    },
+    "maya.geometry": {
+        "icon_path": "{self}/hooks/icons/geometry.png",
+        "type_display": "Geometry"
+    }
+}
+
+
 class MayaSessionCollector(HookBaseClass):
     """
     Collector that operates on the current maya session. Should
@@ -57,6 +72,7 @@ class MayaSessionCollector(HookBaseClass):
         part of its environment configuration.
         """
         schema = super(MayaSessionCollector, self).settings_schema
+        schema["Item Types"]["default_value"].update(MAYA_SESSION_ITEM_TYPES)
         schema["Work File Templates"] = {
             "type": "list",
             "values": {
@@ -120,16 +136,24 @@ class MayaSessionCollector(HookBaseClass):
                 extra=self._get_save_as_action()
             )
 
-        session_item = self._add_file_item(settings, parent_item, file_path)
+        # Define the item's properties
+        properties = {}
 
-        if session_item:
-            session_item.name = "Current Maya Session"
-
-        # discover the project root which helps in discovery of other
+        # Store the project root which helps in discovery of other
         # publishable items
-        project_root = cmds.workspace(q=True, rootDirectory=True)
-        session_item.properties.project_root = project_root
+        properties["project_root"] = cmds.workspace(q=True, rootDirectory=True)
 
+        session_item = self._add_file_item(settings,
+                                           parent_item,
+                                           file_path,
+                                           False,
+                                           None,
+                                           "Current Maya Session",
+                                           "maya.session",
+                                           parent_item.context,
+                                           properties)
+
+        self.logger.info("Collected item: %s" % session_item.name)
         return session_item
 
 
@@ -190,27 +214,15 @@ class MayaSessionCollector(HookBaseClass):
         """
         # Copy the parent session's properties
         properties = copy.deepcopy(parent_item.properties)
+        properties["fields"].update({"extension": "abc"})
 
-        geo_item = parent_item.create_item(
-            "maya.geometry",
-            "Geometry",
-            "Maya Session Geometry",
-            collector=self.plugin,
-            properties=properties
-        )
+        geo_item = self._add_item(settings,
+                                  parent_item,
+                                  "Maya Session Geometry",
+                                  "maya.geometry",
+                                  properties=properties)
 
-        # get the icon path to display for this item
-        icon_path = os.path.join(
-            self.disk_location,
-            os.pardir,
-            "icons",
-            "geometry.png"
-        )
-
-        geo_item.set_icon_from_path(icon_path)
-        geo_item.properties["fields"].update({"extension": "abc"})
-
-        self.logger.info("Collected item: Maya Session Geometry")
+        self.logger.info("Collected item: %s" % geo_item.name)
         return [geo_item]
 
 
@@ -256,7 +268,7 @@ class MayaSessionCollector(HookBaseClass):
 
         # Start with the item's fields, minus extension
         fields = copy.deepcopy(parent_item.properties.get("fields", {}))
-        fields.pop("extension")
+        fields.pop("extension", None)
 
         work_tmpl = publisher.get_template_by_name(work_path_template)
         if not work_tmpl:
@@ -286,21 +298,31 @@ class MayaSessionCollector(HookBaseClass):
                                                       skip_missing_optional_keys=True)
 
 
-    def _resolve_item_fields(self, item):
+    def _resolve_work_path_template(self, settings, item):
+        """
+        Resolve work_path_template from the collector settings for the specified item.
+
+        :param dict settings: Configured settings for this collector
+        :param item: The Item instance
+        :return: Name of the template.
+        """
+        # If this is a maya session and we have the workfiles app defined...
+        if item.type == "maya.session" and self.__workfiles_app:
+            # Get work_path_template from the workfiles app for the item's context
+            # Note: this needs to happen here instead of during item initialization
+            # since the path may change if the context changes
+            return self.__workfiles_app.get_work_template(item.context).name
+
+        return super(MayaSessionCollector, self)._resolve_work_path_template(settings, item)
+
+
+    def _resolve_item_fields(self, settings, item):
         """
         Helper method used to get fields that might not normally be defined in the context.
         Intended to be overridden by DCC-specific subclasses.
         """
-        # If this is a maya session and we have the workfiles app defined...
-        if item.type == "file.maya" and self.__workfiles_app:
-            # Get work_path_template from the workfiles app for the item's context
-            # Note: this needs to happen here instead of during item initialization
-            # since the path may change if the context changes
-            item.properties.work_path_template = \
-                self.__workfiles_app.get_work_template(item.context).name
-
         # Now run the parent resolve method
-        fields = super(MayaSessionCollector, self)._resolve_item_fields(item)
+        fields = super(MayaSessionCollector, self)._resolve_item_fields(settings, item)
 
         node = item.properties.get("node")
         if node:

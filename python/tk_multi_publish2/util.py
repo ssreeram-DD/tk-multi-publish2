@@ -254,6 +254,27 @@ def get_frame_sequence_path(path, frame_spec=None):
     )
 
 
+def get_sequence_path_files(seq_path):
+    """
+    Given a sequence path, find all related files on disk
+
+    :param path: The input sequence path with a frame spec
+
+    :return: A list of matching file paths
+    """
+
+    # the logic for this method lives in a hook that can be overridden by
+    # clients. exposing the method here in the publish utils api prevents
+    # clients from having to call other hooks directly in their
+    # collector/publisher hook implementations.
+    publisher = sgtk.platform.current_bundle()
+    return publisher.execute_hook_method(
+        "path_info",
+        "get_sequence_path_files",
+        seq_path=seq_path
+    )
+
+
 def get_frame_sequences(folder, extensions=None, frame_spec=None):
     """
     Given a folder, inspect the contained files to find what appear to be

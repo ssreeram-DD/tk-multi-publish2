@@ -10,8 +10,10 @@
 
 import os
 import re
+import glob
 
 import sgtk
+from sgtk.templatekey import SequenceKey
 
 HookBaseClass = sgtk.get_hook_baseclass()
 
@@ -165,16 +167,33 @@ class BasicPathInfo(HookBaseClass):
         publisher = self.parent
         path_info = publisher.util.get_file_path_components(path)
 
-        # use template_key "SEQ" as default search regex
+        # If the frame_spec is not specified, see if we can determine one
         if not frame_spec:
-            seq_key = self.sgtk.template_keys.get("SEQ")
-            if seq_key:
-                frame_spec = seq_key.default
+            # Attempt to match the path to a template
+            path_tmpl = self.sgtk.template_from_path(path)
+            if path_tmpl:
+                key_name = None
+                for key in path_tmpl.keys.values():
+                    if isinstance(key, SequenceKey):
+                        key_name = key.name
+                        break
+
+                # If we have a sequence key, get the field value
+                if key_name:
+                    fields = path_tmpl.get_fields(path)
+                    frame_spec = fields[key_name]
+
+            # Else try to use the default value for the "SEQ" template key
             else:
-                frame_spec = "%%04d"
+                seq_key = self.sgtk.template_keys.get("SEQ")
+                if seq_key:
+                    frame_spec = seq_key.default
+                # Else just default to a 4 pad
+                else:
+                    frame_spec = "%%04d"
 
         # see if there is a frame number
-        SPEC_REGEX = re.compile("(.*)([._-])(%s)\.([^.]+)$" % frame_spec)
+        SPEC_REGEX = re.compile("(.*)([._-])(%s)\.([^.]+)$" % re.escape(frame_spec))
         frame_pattern_match = re.search(SPEC_REGEX, path_info["filename"])
 
         if not frame_pattern_match:
@@ -206,13 +225,23 @@ class BasicPathInfo(HookBaseClass):
 
         :return: The full frame sequence path
         """
-
         publisher = self.parent
+
+        # make sure the path is normalized. no trailing separator, separators
+        # are appropriate for the current os, no double separators, etc.
+        path = sgtk.util.ShotgunPath.normalize(path)
+
+        # Check to see if the input path contains a frame_spec
+        frame_path = self.get_path_for_frame(path, 1001)
+        if frame_path:
+            # If we were able to do a successful substitution, then the input
+            # path is a sequence path, so just return the input path
+            path = frame_path
+
         path_info = publisher.util.get_file_path_components(path)
 
         # see if there is a frame number
         frame_pattern_match = re.search(FRAME_REGEX, path_info["filename"])
-
         if not frame_pattern_match:
             # no frame number detected. carry on.
             return None
@@ -238,6 +267,28 @@ class BasicPathInfo(HookBaseClass):
 
         # build the full sequence path
         return os.path.join(path_info["folder"], seq_filename)
+
+    def get_sequence_path_files(self, seq_path):
+        """
+        Given a sequence path, find all related files on disk
+
+        :param path: The input sequence path with a frame spec
+
+        :return: A list of matching file paths
+        """
+        # make sure the path is normalized. no trailing separator, separators
+        # are appropriate for the current os, no double separators, etc.
+        path = sgtk.util.ShotgunPath.normalize(seq_path)
+
+        # find files that match the pattern
+        seq_pattern = self.get_path_for_frame(path, "*")
+        seq_files = [f for f in glob.iglob(seq_pattern) if os.path.isfile(f)]
+
+        # Sort the resulting list
+        seq_files.sort()
+
+        # Return the seq_files
+        return seq_files
 
     def get_frame_sequences(self, folder, extensions=None, frame_spec=None):
         """

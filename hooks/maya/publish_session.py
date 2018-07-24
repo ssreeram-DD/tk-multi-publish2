@@ -16,10 +16,25 @@ import sgtk
 HookBaseClass = sgtk.get_hook_baseclass()
 
 
-class MayaPublishFilesPlugin(HookBaseClass):
+MAYA_SESSION_ITEM_TYPE_SETTINGS = {
+    "maya.session": {
+        "publish_type": "Maya Scene",
+        "publish_name_template": None,
+        "publish_path_template": None
+    }
+}
+
+class MayaPublishSessionPlugin(HookBaseClass):
     """
     Inherits from PublishFilesPlugin
     """
+    @property
+    def name(self):
+        """
+        One line display name describing the plugin
+        """
+        return "Publish Maya Session"
+
     @property
     def description(self):
         """
@@ -27,7 +42,7 @@ class MayaPublishFilesPlugin(HookBaseClass):
         contain simple html for formatting.
         """
 
-        desc = super(MayaPublishFilesPlugin, self).description
+        desc = super(MayaPublishSessionPlugin, self).description
 
         return desc + "<br><br>" + """
         After publishing, if a version number is detected in the file, the file
@@ -43,6 +58,30 @@ class MayaPublishFilesPlugin(HookBaseClass):
         <br><br><i>NOTE: any amount of version number padding is supported.</i>
         """
 
+    @property
+    def settings_schema(self):
+        """
+        Dictionary defining the settings that this plugin expects to receive
+        through the settings parameter in the accept, validate, publish and
+        finalize methods.
+
+        A dictionary on the following form::
+
+            {
+                "Settings Name": {
+                    "type": "settings_type",
+                    "default_value": "default_value",
+                    "description": "One line description of the setting"
+            }
+
+        The type string should be one of the data types that toolkit accepts
+        as part of its environment configuration.
+        """
+        schema = super(MayaPublishSessionPlugin, self).settings_schema
+        schema["Item Type Filters"]["default_value"].append("maya.session")
+        schema["Item Type Settings"]["default_value"].update(MAYA_SESSION_ITEM_TYPE_SETTINGS)
+        return schema
+
 
     def validate(self, task_settings, item):
         """
@@ -56,12 +95,11 @@ class MayaPublishFilesPlugin(HookBaseClass):
         :returns: True if item is valid, False otherwise.
         """
         publisher = self.parent
-        path = item.properties.path
 
-        if item.type == 'file.maya':
+        if item.type == 'maya.session':
 
             # if the file has a version number in it, see if the next version exists
-            next_version_path = publisher.util.get_next_version_path(path)
+            next_version_path = publisher.util.get_next_version_path(item.properties.path)
             if next_version_path and os.path.exists(next_version_path):
 
                 # determine the next available version_number. just keep asking for
@@ -87,7 +125,7 @@ class MayaPublishFilesPlugin(HookBaseClass):
                 )
                 return False
 
-        return super(MayaPublishFilesPlugin, self).validate(task_settings, item)
+        return super(MayaPublishSessionPlugin, self).validate(task_settings, item)
 
 
     def publish(self, task_settings, item):
@@ -99,16 +137,15 @@ class MayaPublishFilesPlugin(HookBaseClass):
             instances.
         :param item: Item to process
         """
-        path = item.properties.path
 
         # ensure the session is saved
-        if item.type == 'file.maya':
-            _save_session(sgtk.util.ShotgunPath.normalize(path))
+        if item.type == 'maya.session':
+            _save_session(sgtk.util.ShotgunPath.normalize(item.properties.path))
 
             # Store any file dependencies
-            item.properties.publish_dependencies = _get_scene_dependencies()
+            item.properties.publish_dependency_paths = self._get_dependency_paths()
 
-        super(MayaPublishFilesPlugin, self).publish(task_settings, item)
+        super(MayaPublishSessionPlugin, self).publish(task_settings, item)
 
 
     def finalize(self, task_settings, item):
@@ -121,97 +158,51 @@ class MayaPublishFilesPlugin(HookBaseClass):
             instances.
         :param item: Item to process
         """
-        path = item.properties.path
+        super(MayaPublishSessionPlugin, self).finalize(task_settings, item)
 
-        super(MayaPublishFilesPlugin, self).finalize(task_settings, item)
-
-        # only version up the file if the publish went through successfully.
-        if item.properties.get("sg_publish_data"):
-            # insert the path into the properties
-            if item.type == 'file.maya':
-                item.properties.next_version_path = self._bump_file_version(path)
+        # version up the scene file if the publish went through successfully.
+        if item.type == 'maya.session' and item.properties.get("sg_publish_data"):
+            # insert the next version path into the properties
+            item.properties.next_version_path = self._save_to_next_version(item.properties.path, _save_session)
 
 
-    def _bump_file_version(self, path):
+    def _get_dependency_paths(self):
         """
-        Save the supplied path to the next version on disk.
+        Find additional dependencies from the scene
         """
 
-        publisher = self.parent
-        path = sgtk.util.ShotgunPath.normalize(path)
-        version_number = publisher.util.get_version_number(path)
+        # default implementation looks for references and
+        # textures (file nodes) and returns any paths that
+        # match a template defined in the configuration
+        ref_paths = set()
 
-        if version_number is None:
-            self.logger.debug(
-                "No version number detected in the file path. "
-                "Skipping the bump file version step."
-            )
-            return None
+        # first let's look at maya references
+        ref_nodes = cmds.ls(references=True)
+        for ref_node in ref_nodes:
+            # get the path:
+            ref_path = cmds.referenceQuery(ref_node, filename=True)
+            # make it platform dependent
+            # (maya uses C:/style/paths)
+            ref_path = ref_path.replace("/", os.path.sep)
+            if ref_path:
+                ref_paths.add(ref_path)
 
-        self.logger.info("Incrementing session file version number...")
+        # now look at file texture nodes
+        for file_node in cmds.ls(l=True, type="file"):
+            # ensure this is actually part of this session and not referenced
+            if cmds.referenceQuery(file_node, isNodeReferenced=True):
+                # this is embedded in another reference, so don't include it in
+                # the breakdown
+                continue
 
-        next_version_path = publisher.util.get_next_version_path(path)
+            # get path and make it platform dependent
+            # (maya uses C:/style/paths)
+            texture_path = cmds.getAttr(
+                "%s.fileTextureName" % file_node).replace("/", os.path.sep)
+            if texture_path:
+                ref_paths.add(texture_path)
 
-        # nothing to do if the next version path can't be determined or if it
-        # already exists.
-        if not next_version_path:
-            self.logger.warning("Could not determine the next version path.")
-            return None
-        elif os.path.exists(next_version_path):
-            self.logger.warning(
-                "The next version of the path already exists",
-                extra={
-                    "action_show_folder": {
-                        "path": next_version_path
-                    }
-                }
-            )
-            return None
-
-        # save the session to the new path
-        _save_session(next_version_path)
-        self.logger.info("Session saved as: %s" % (next_version_path,))
-
-        return next_version_path
-
-
-def _get_scene_dependencies():
-    """
-    Find additional dependencies from the scene
-    """
-
-    # default implementation looks for references and
-    # textures (file nodes) and returns any paths that
-    # match a template defined in the configuration
-    ref_paths = set()
-
-    # first let's look at maya references
-    ref_nodes = cmds.ls(references=True)
-    for ref_node in ref_nodes:
-        # get the path:
-        ref_path = cmds.referenceQuery(ref_node, filename=True)
-        # make it platform dependent
-        # (maya uses C:/style/paths)
-        ref_path = ref_path.replace("/", os.path.sep)
-        if ref_path:
-            ref_paths.add(ref_path)
-
-    # now look at file texture nodes
-    for file_node in cmds.ls(l=True, type="file"):
-        # ensure this is actually part of this session and not referenced
-        if cmds.referenceQuery(file_node, isNodeReferenced=True):
-            # this is embedded in another reference, so don't include it in
-            # the breakdown
-            continue
-
-        # get path and make it platform dependent
-        # (maya uses C:/style/paths)
-        texture_path = cmds.getAttr(
-            "%s.fileTextureName" % file_node).replace("/", os.path.sep)
-        if texture_path:
-            ref_paths.add(texture_path)
-
-    return list(ref_paths)
+        return list(ref_paths)
 
 
 def _save_session(path):
