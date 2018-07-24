@@ -120,7 +120,7 @@ class PublishFilesPlugin(HookBaseClass):
 
         publish_path - The location on disk the publish is copied to.
 
-        sg_publish_data - The dictionary of publish information returned from
+        sg_publish_data_list - A list of dictionaries of publish information returned from
             the tk-core register_publish method.
 
     """

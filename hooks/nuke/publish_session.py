@@ -165,7 +165,7 @@ class NukePublishSessionPlugin(HookBaseClass):
         super(NukePublishSessionPlugin, self).finalize(task_settings, item)
 
         # version up the script file if the publish went through successfully.
-        if item.type == 'nuke.session' and item.properties.get("sg_publish_data"):
+        if item.type == 'nuke.session' and item.properties.get("sg_publish_data_list"):
             # insert the next version path into the properties
             item.properties.next_version_path = self._save_to_next_version(item.properties.path, _save_session)
 

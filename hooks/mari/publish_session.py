@@ -115,7 +115,7 @@ class MariPublishSessionPlugin(HookBaseClass):
         super(MariPublishSessionPlugin, self).finalize(task_settings, item)
 
         # version up the session if the publish went through successfully.
-        if item.type == 'mari.session' and item.properties.get("sg_publish_data"):
+        if item.type == 'mari.session' and item.properties.get("sg_publish_data_list"):
             # save the new version number in the session metadata
             next_version = int(item.properties.publish_version) + 1
 

@@ -408,7 +408,7 @@ class PublishPluginBase(PluginBase):
 
                 # register the publish and pack the publish info into the item's
                 # properties dict
-                item.properties["sg_publish_data"] = sgtk.util.register_publish(
+                sg_publish_data = sgtk.util.register_publish(
                     "tk": publisher.sgtk,
                     "context": item.context,
                     "comment": item.description,
@@ -474,14 +474,42 @@ class PublishPluginBase(PluginBase):
 
             def undo(self, task_settings, item):
 
-                publish_data = item.properties.get("sg_publish_data")
+                sg_publish_data_list = item.properties.get("sg_publish_data_list")
                 publish_path = item.properties.get("publish_path")
-                self._delete_files(publish_path, item)
-                if publish_data:
-                    try:
-                        self.sgtk.shotgun.delete(publish_data["type"], publish_data["id"])
-                    except Exception:
-                        self.logger.error("Failed to delete the PublishedFile entity for %s" % item.name)
+                publish_symlink_path = item.properties.get("publish_symlink_path")
+
+                if publish_symlink_path:
+                    self._delete_files(publish_symlink_path, item)
+
+                if publish_path:
+                    self._delete_files(publish_path, item)
+
+                if sg_publish_data_list:
+                    for publish_data in sg_publish_data_list:
+                        self.logger.info("Cleaning up published file...",
+                                         extra={
+                                             "action_show_more_info": {
+                                                 "label": "Publish Data",
+                                                 "tooltip": "Show the publish data.",
+                                                 "text": "%s" % publish_data
+                                             }
+                                         }
+                                         )
+                        try:
+                            self.sgtk.shotgun.delete(publish_data["type"], publish_data["id"])
+                        except Exception:
+                            self.logger.error(
+                                "Failed to delete PublishedFile Entity for %s" % item.name,
+                                extra={
+                                    "action_show_more_info": {
+                                        "label": "Show Error Log",
+                                        "tooltip": "Show the error log",
+                                        "text": traceback.format_exc()
+                                    }
+                                }
+                            )
+                    # pop the sg_publish_data_list too
+                    item.properties.pop("sg_publish_data_list")
 
         :param dict task_settings: The keys are strings, matching the keys returned
             in the :data:`settings` property. The values are
@@ -638,7 +666,7 @@ class PublishPluginBase(PluginBase):
                 dest_folder = os.path.dirname(dest_file)
                 filesystem.ensure_folder_exists(dest_folder)
                 filesystem.copy_file(src_file, dest_file,
-                          permissions=stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+                          permissions=stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
             except Exception as e:
                 raise Exception(
                     "Failed to copy file from '%s' to '%s'.\n%s" %
