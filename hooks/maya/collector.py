@@ -8,13 +8,10 @@
 # agreement to the Shotgun Pipeline Toolkit Source Code License. All rights
 # not expressly granted therein are reserved by Shotgun Software Inc.
 
-import os
 import glob
 import copy
-import pprint
 
 import maya.cmds as cmds
-import maya.mel as mel
 import sgtk
 from sgtk import TankError
 
@@ -99,8 +96,7 @@ class MayaSessionCollector(HookBaseClass):
 
         # create an item representing the current maya session
         session_item = self.collect_current_maya_session(settings, parent_item)
-        if session_item:
-            items.append(session_item)
+        items.append(session_item)
 
         # look at the render layers to find rendered images on disk
         items.extend(self.collect_rendered_images(settings, session_item))
@@ -278,7 +274,7 @@ class MayaSessionCollector(HookBaseClass):
         # First get the fields from the context
         try:
             fields.update(parent_item.context.as_template_fields(work_tmpl))
-        except TankError as e:
+        except TankError:
             self.logger.warning(
                 "Unable to get context fields for work_path_template.")
 

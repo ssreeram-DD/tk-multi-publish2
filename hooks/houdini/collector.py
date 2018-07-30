@@ -1,11 +1,11 @@
 # Copyright (c) 2017 Shotgun Software Inc.
-# 
+#
 # CONFIDENTIAL AND PROPRIETARY
-# 
-# This work is provided "AS IS" and subject to the Shotgun Pipeline Toolkit 
+#
+# This work is provided "AS IS" and subject to the Shotgun Pipeline Toolkit
 # Source Code License included in this distribution package. See LICENSE.
-# By accessing, using, copying or modifying this work you indicate your 
-# agreement to the Shotgun Pipeline Toolkit Source Code License. All rights 
+# By accessing, using, copying or modifying this work you indicate your
+# agreement to the Shotgun Pipeline Toolkit Source Code License. All rights
 # not expressly granted therein are reserved by Shotgun Software Inc.
 
 import os
@@ -27,14 +27,35 @@ _HOUDINI_OUTPUTS = {
 }
 
 
+# This is a dictionary of file type info that allows the basic collector to
+# identify common production file types and associate them with a display name,
+# item type, and config icon.
+HOUDINI_SESSION_ITEM_TYPES = {
+    "houdini.session": {
+        "icon_path": "{self}/hooks/icons/houdini.png",
+        "type_display": "Houdini Session"
+    }
+}
+
+
 class HoudiniSessionCollector(HookBaseClass):
     """
     Collector that operates on the current houdini session. Should inherit from
     the basic collector hook.
     """
+    def __init__(self, parent, **kwargs):
+        """
+        Construction
+        """
+        # call base init
+        super(HoudiniSessionCollector, self).__init__(parent, **kwargs)
+
+        # cache the workfiles app
+        self.__workfiles_app = self.parent.engine.apps.get("tk-multi-workfiles2")
+
 
     @property
-    def settings(self):
+    def settings_schema(self):
         """
         Dictionary defining the settings that this collector expects to receive
         through the settings parameter in the process_current_session and
@@ -45,34 +66,28 @@ class HoudiniSessionCollector(HookBaseClass):
             {
                 "Settings Name": {
                     "type": "settings_type",
-                    "default": "default_value",
+                    "default_value": "default_value",
                     "description": "One line description of the setting"
             }
 
         The type string should be one of the data types that toolkit accepts as
         part of its environment configuration.
         """
-
-        # grab any base class settings
-        collector_settings = super(HoudiniSessionCollector, self).settings or {}
-
-        # settings specific to this collector
-        houdini_session_settings = {
-            "Work Template": {
+        schema = super(HoudiniSessionCollector, self).settings_schema
+        schema["Item Types"]["default_value"].update(HOUDINI_SESSION_ITEM_TYPES)
+        schema["Work File Templates"] = {
+            "type": "list",
+            "values": {
                 "type": "template",
-                "default": None,
-                "description": "Template path for artist work files. Should "
-                               "correspond to a template defined in "
-                               "templates.yml. If configured, is made available"
-                               "to publish plugins via the collected item's "
-                               "properties. ",
+                "description": "",
+                "fields": ["context", "*"]
             },
+            "default_value": [],
+            "allows_empty": True,
+            "description": "A list of templates to use to search for work files."
         }
+        return schema
 
-        # update the base settings with these settings
-        collector_settings.update(houdini_session_settings)
-
-        return collector_settings
 
     def process_current_session(self, settings, parent_item):
         """
@@ -82,19 +97,26 @@ class HoudiniSessionCollector(HookBaseClass):
         :param dict settings: Configured settings for this collector
         :param parent_item: Root item instance
         """
+        items = []
+
         # create an item representing the current houdini session
-        item = self.collect_current_houdini_session(settings, parent_item)
+        session_item = self.collect_current_houdini_session(settings, parent_item)
+        items.append(session_item)
 
         # remember if we collect any alembic/mantra nodes
         self._alembic_nodes_collected = False
         self._mantra_nodes_collected = False
 
         # methods to collect tk alembic/mantra nodes if the app is installed
-        self.collect_tk_alembicnodes(item)
-        self.collect_tk_mantranodes(item)
+        items.extend(self.collect_tk_alembicnodes(settings, session_item))
+        items.extend(self.collect_tk_mantranodes(settings, session_item))
 
         # collect other, non-toolkit outputs to present for publishing
-        self.collect_node_outputs(item)
+        items.extend(self.collect_node_outputs(settings, session_item))
+
+        # Return the list of items
+        return items
+
 
     def collect_current_houdini_session(self, settings, parent_item):
         """
@@ -106,59 +128,42 @@ class HoudiniSessionCollector(HookBaseClass):
         :returns: Item of type houdini.session
         """
 
-        publisher = self.parent
-
         # get the path to the current file
-        path = hou.hipFile.path()
+        file_path = hou.hipFile.path()
+        if not file_path:
+            # the session has not been saved before (no path determined).
+            # provide a save button. the session will need to be saved before
+            # validation will succeed.
+            self.logger.warning(
+                "The Houdini scene has not been saved.",
+                extra=self._get_save_as_action()
+            )
 
-        # determine the display name for the item
-        if path:
-            file_info = publisher.util.get_file_path_components(path)
-            display_name = file_info["filename"]
-        else:
-            display_name = "Current Houdini Session"
+        # Define the item's properties
+        properties = {}
 
-        # create the session item for the publish hierarchy
-        session_item = parent_item.create_item(
-            "houdini.session",
-            "Houdini File",
-            display_name
-        )
+        session_item = self._add_file_item(settings,
+                                           parent_item,
+                                           file_path,
+                                           False,
+                                           None,
+                                           "Current Houdini Session",
+                                           "houdini.session",
+                                           parent_item.context,
+                                           properties)
 
-        # get the icon path to display for this item
-        icon_path = os.path.join(
-            self.disk_location,
-            os.pardir,
-            "icons",
-            "houdini.png"
-        )
-        session_item.set_icon_from_path(icon_path)
-
-        # if a work template is defined, add it to the item properties so that
-        # it can be used by attached publish plugins
-        work_template_setting = settings.get("Work Template")
-        if work_template_setting:
-            work_template = publisher.engine.get_template_by_name(
-                work_template_setting.value)
-
-            # store the template on the item for use by publish plugins. we
-            # can't evaluate the fields here because there's no guarantee the
-            # current session path won't change once the item has been created.
-            # the attached publish plugins will need to resolve the fields at
-            # execution time.
-            session_item.properties["work_template"] = work_template
-            self.logger.debug(
-                "Work template defined for Houdini collection.")
-
-        self.logger.info("Collected current Houdini session")
+        self.logger.info("Collected item: %s" % session_item.name)
         return session_item
 
-    def collect_node_outputs(self, parent_item):
+
+    def collect_node_outputs(self, settings, parent_item):
         """
         Creates items for known output nodes
 
-        :param parent_item: Parent Item instance
+        :param dict settings: Configured settings for this collector
+        :param parent_item: The parent item for any write geo nodes collected
         """
+        items = []
 
         for node_category in _HOUDINI_OUTPUTS:
             for node_type in _HOUDINI_OUTPUTS[node_category]:
@@ -186,36 +191,41 @@ class HoudiniSessionCollector(HookBaseClass):
                 for node in nodes:
 
                     # get the evaluated path parm value
-                    path = node.parm(path_parm_name).eval()
+                    file_path = node.parm(path_parm_name).eval()
 
                     # ensure the output path exists
-                    if not os.path.exists(path):
+                    if not os.path.exists(file_path):
                         continue
 
                     self.logger.info(
-                        "Processing %s node: %s" % (node_type, node.path()))
+                        "Processing %s node: %s" % (node.type().name(), node.name()))
 
                     # allow the base class to collect and create the item. it
                     # should know how to handle the output path
-                    item = super(HoudiniSessionCollector, self)._collect_file(
-                        parent_item,
-                        path,
-                        frame_sequence=True
-                    )
+                    item = self._collect_file(settings, parent_item, file_path)
 
                     # the item has been created. update the display name to
                     # include the node path to make it clear to the user how it
                     # was collected within the current session.
-                    item.name = "%s (%s)" % (item.name, node.path())
+                    item.name = "%s (%s)" % (node.type().name(), node.name())
 
-    def collect_tk_alembicnodes(self, parent_item):
+                    # Store a reference to the originating node
+                    item.properties.node = node
+
+                    # Add item to the list
+                    items.append(item)
+
+
+    def collect_tk_alembicnodes(self, settings, parent_item):
         """
         Checks for an installed `tk-houdini-alembicnode` app. If installed, will
         search for instances of the node in the current session and create an
         item for each one with an output on disk.
 
-        :param parent_item: The item to parent new items to.
+        :param dict settings: Configured settings for this collector
+        :param parent_item: The parent item for any write geo nodes collected
         """
+        items = []
 
         publisher = self.parent
         engine = publisher.engine
@@ -230,7 +240,7 @@ class HoudiniSessionCollector(HookBaseClass):
 
         try:
             tk_alembic_nodes = alembicnode_app.get_nodes()
-        except AttributeError, e:
+        except AttributeError:
             self.logger.warning(
                 "Unable to query the session for tk-houdini-alembicnode "
                 "instances. It looks like perhaps an older version of the "
@@ -238,10 +248,6 @@ class HoudiniSessionCollector(HookBaseClass):
                 "Consider updating the app to allow publishing their outputs."
             )
             return
-
-        # retrieve the work file template defined by the app. we'll set this
-        # on the collected alembicnode items for use during publishing.
-        work_template = alembicnode_app.get_work_file_template()
 
         for node in tk_alembic_nodes:
 
@@ -251,31 +257,36 @@ class HoudiniSessionCollector(HookBaseClass):
                 continue
 
             self.logger.info(
-                "Processing sgtk_alembic node: %s" % (node.path(),))
+                "Processing sgtk_alembic node: %s" % (node.name(),))
 
             # allow the base class to collect and create the item. it
             # should know how to handle the output path
-            item = super(HoudiniSessionCollector, self)._collect_file(
-                parent_item, out_path)
+            item = self._collect_file(settings, parent_item, out_path)
 
             # the item has been created. update the display name to
             # include the node path to make it clear to the user how it
             # was collected within the current session.
-            item.name = "%s (%s)" % (item.name, node.path())
+            item.name = "%s (%s)" % (node.type().name(), node.name())
 
-            if work_template:
-                item.properties["work_template"] = work_template
+            # Store a reference to the originating node
+            item.properties.node = node
+
+            # Add item to the list
+            items.append(item)
 
             self._alembic_nodes_collected = True
 
-    def collect_tk_mantranodes(self, parent_item):
+
+    def collect_tk_mantranodes(self, settings, parent_item):
         """
         Checks for an installed `tk-houdini-mantranode` app. If installed, will
         search for instances of the node in the current session and create an
         item for each one with an output on disk.
 
-        :param parent_item: The item to parent new items to.
+        :param dict settings: Configured settings for this collector
+        :param parent_item: The parent item for any write geo nodes collected
         """
+        items = []
 
         publisher = self.parent
         engine = publisher.engine
@@ -290,7 +301,7 @@ class HoudiniSessionCollector(HookBaseClass):
 
         try:
             tk_mantra_nodes = mantranode_app.get_nodes()
-        except AttributeError, e:
+        except AttributeError:
             self.logger.warning(
                 "Unable to query the session for tk-houdini-mantranode "
                 "instances. It looks like perhaps an older version of the "
@@ -298,10 +309,6 @@ class HoudiniSessionCollector(HookBaseClass):
                 "Consider updating the app to allow publishing their outputs."
             )
             return
-
-        # retrieve the work file template defined by the app. we'll set this
-        # on the collected alembicnode items for use during publishing.
-        work_template = mantranode_app.get_work_file_template()
 
         for node in tk_mantra_nodes:
 
@@ -311,22 +318,107 @@ class HoudiniSessionCollector(HookBaseClass):
                 continue
 
             self.logger.info(
-                "Processing sgtk_mantra node: %s" % (node.path(),))
+                "Processing sgtk_mantra node: %s" % (node.name(),))
 
             # allow the base class to collect and create the item. it
             # should know how to handle the output path
-            item = super(HoudiniSessionCollector, self)._collect_file(
-                parent_item,
-                out_path,
-                frame_sequence=True
-            )
+            item = self._collect_file(settings, parent_item, out_path)
 
             # the item has been created. update the display name to
             # include the node path to make it clear to the user how it
             # was collected within the current session.
-            item.name = "%s (%s)" % (item.name, node.path())
+            item.name = "%s (%s)" % (node.type().name(), node.name())
 
-            if work_template:
-                item.properties["work_template"] = work_template
+            # Store a reference to the originating node
+            item.properties.node = node
+
+            # Add item to the list
+            items.append(item)
 
             self._mantra_nodes_collected = True
+
+
+    def _resolve_work_path_template(self, settings, item):
+        """
+        Resolve work_path_template from the collector settings for the specified item.
+
+        :param dict settings: Configured settings for this collector
+        :param item: The Item instance
+        :return: Name of the template.
+        """
+        publisher = self.parent
+        engine = publisher.engine
+
+        node = item.properties.get("node")
+        if node and node.type().name() in ("sgtk_alembic", "sgtk_mantra"):
+            if node.type().name() == "sgtk_mantra":
+                write_node_app = engine.apps.get("tk-houdini-mantranode")
+            elif node.type().name() == "sgtk_alembic":
+                write_node_app = engine.apps.get("tk-houdini-alembicnode")
+
+            if write_node_app:
+                # Get work_path_template from the write_node app and update fields
+                return write_node_app.get_work_file_template().name
+            else:
+                self.logger.error("Unable to process item '%s' without "
+                        "the tk-houdini_writenode app!" % item.name)
+
+        # If this is a houdini session and we have the workfiles app defined...
+        elif item.type == "houdini.session" and self.__workfiles_app:
+            # Get work_path_template from the workfiles app for the item's context
+            # Note: this needs to happen here instead of during item initialization
+            # since the path may change if the context changes
+            return self.__workfiles_app.get_work_template(item.context).name
+
+        return super(HoudiniSessionCollector, self)._resolve_work_path_template(settings, item)
+
+
+    def _resolve_item_fields(self, settings, item):
+        """
+        Helper method used to get fields that might not normally be defined in the context.
+        Intended to be overridden by DCC-specific subclasses.
+        """
+        # Now run the parent resolve method
+        fields = super(HoudiniSessionCollector, self)._resolve_item_fields(settings, item)
+
+#        node = item.properties.get("node")
+#        if node and node.type().name() in ("sgtk_mantra", "ifd"):
+#            # If not defined, get the height and width from the cam_node
+#            if "width" not in fields or "height" not in fields:
+#                if node.evalParm("override_camerares"):
+#                    fields["width"] = node.evalParm("res_overridex")
+#                    fields["height"] = node.evalParm("res_overridey")
+#                else:
+#                    cam_name = node.evalParm("camera")
+#                    if cam_name:
+#                        cam_node = hou.node(cam_name)
+#                        if cam_node:
+#                            fields["width"] = cam_node.evalParm("resx")
+#                            fields["height"] = cam_node.evalParm("resy")
+
+        return fields
+
+
+def _session_path():
+    """
+    Return the path to the current session
+    :return:
+    """
+
+    # Houdini always returns a file path, even for new sessions. We key off the
+    # houdini standard of "untitled.hip" to indicate that the file has not been
+    # saved.
+    if hou.hipFile.name() == "untitled.hip":
+        return None
+
+    return hou.hipFile.path()
+
+
+def _save_session(path):
+    """
+    Save the current session to the supplied path.
+    """
+    # We need to flip the slashes on Windows to avoid a bug in Houdini. If we don't
+    # the next Save As dialog will have the filename box populated with the complete
+    # file path.
+    hou.hipFile.save(file_name=path.replace("\\", "/").encode("utf-8"))
