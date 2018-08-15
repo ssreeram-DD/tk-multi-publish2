@@ -183,14 +183,14 @@ class BasicPathInfo(HookBaseClass):
                     fields = path_tmpl.get_fields(path)
                     frame_spec = fields[key_name]
 
-            # Else try to use the default value for the "SEQ" template key
+        # Else try to use the default value for the "SEQ" template key
+        if not frame_spec:
+            seq_key = self.sgtk.template_keys.get("SEQ")
+            if seq_key:
+                frame_spec = seq_key.default
+            # Else just default to a 4 pad
             else:
-                seq_key = self.sgtk.template_keys.get("SEQ")
-                if seq_key:
-                    frame_spec = seq_key.default
-                # Else just default to a 4 pad
-                else:
-                    frame_spec = "%%04d"
+                frame_spec = "%%04d"
 
         # see if there is a frame number
         SPEC_REGEX = re.compile("(.*)([._-])(%s)\.([^.]+)$" % re.escape(frame_spec))
