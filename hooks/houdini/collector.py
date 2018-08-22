@@ -240,7 +240,7 @@ class HoudiniSessionCollector(HookBaseClass):
                 "The tk-houdini-alembicnode app is not installed. "
                 "Will not attempt to collect those nodes."
             )
-            return
+            return items
 
         try:
             tk_alembic_nodes = alembicnode_app.get_nodes()
@@ -251,7 +251,7 @@ class HoudiniSessionCollector(HookBaseClass):
                 "app is in use which does not support querying the nodes. "
                 "Consider updating the app to allow publishing their outputs."
             )
-            return
+            return items
 
         for node in tk_alembic_nodes:
 
@@ -280,6 +280,8 @@ class HoudiniSessionCollector(HookBaseClass):
 
             self._alembic_nodes_collected = True
 
+        return items
+
 
     def collect_tk_mantranodes(self, settings, parent_item):
         """
@@ -301,7 +303,7 @@ class HoudiniSessionCollector(HookBaseClass):
                 "The tk-houdini-mantranode app is not installed. "
                 "Will not attempt to collect those nodes."
             )
-            return
+            return items
 
         try:
             tk_mantra_nodes = mantranode_app.get_nodes()
@@ -312,7 +314,7 @@ class HoudiniSessionCollector(HookBaseClass):
                 "app is in use which does not support querying the nodes. "
                 "Consider updating the app to allow publishing their outputs."
             )
-            return
+            return items
 
         for node in tk_mantra_nodes:
 
@@ -340,6 +342,8 @@ class HoudiniSessionCollector(HookBaseClass):
             items.append(item)
 
             self._mantra_nodes_collected = True
+
+        return items
 
 
     def collect_work_files(self, settings, parent_item, work_template):
