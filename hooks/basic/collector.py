@@ -12,7 +12,6 @@ import mimetypes
 import os
 import datetime
 import urllib
-import glob
 import pprint
 import sgtk
 from sgtk import TankError
@@ -34,11 +33,6 @@ DEFAULT_ITEM_TYPES = {
         "icon_path": "{self}/hooks/icons/3dsmax.png",
         "type_display": "3dsmax Scene"
     },
-    "file.nukestudio": {
-        "extensions": ["hrox"],
-        "icon_path": "{self}/hooks/icons/nukestudio.png",
-        "type_display": "NukeStudio Project"
-    },
     "file.houdini": {
         "extensions": ["hip", "hipnc"],
         "icon_path": "{self}/hooks/icons/houdini.png",
@@ -58,6 +52,11 @@ DEFAULT_ITEM_TYPES = {
         "extensions": ["nk"],
         "icon_path": "{self}/hooks/icons/nuke.png",
         "type_display": "Nuke Script"
+    },
+    "file.nukestudio": {
+        "extensions": ["hrox"],
+        "icon_path": "{self}/hooks/icons/nukestudio.png",
+        "type_display": "NukeStudio Project"
     },
     "file.photoshop": {
         "extensions": ["psd", "psb"],

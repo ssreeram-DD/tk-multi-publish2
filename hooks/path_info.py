@@ -154,7 +154,7 @@ class BasicPathInfo(HookBaseClass):
     def get_path_for_frame(self, path, frame_num, frame_spec=None):
         """
         Given a path with a frame spec, return the expanded path where the frame
-        spec, such as ``{FRAME}`` or ``%04d`` or ``$F``, is replaced with a given 
+        spec, such as ``{FRAME}`` or ``%04d`` or ``$F``, is replaced with a given
         frame number.
 
         :param path: The input path with a frame number

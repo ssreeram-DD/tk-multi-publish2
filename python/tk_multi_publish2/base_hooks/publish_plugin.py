@@ -785,7 +785,7 @@ class PublishPluginBase(PluginBase):
         return next_version_path, version
 
 
-    def _save_to_next_version(self, path, save_callback):
+    def _save_to_next_version(self, path, save_callback, *args, **kwargs):
         """
         Save the supplied path to the next version on disk.
 
@@ -836,7 +836,7 @@ class PublishPluginBase(PluginBase):
             return None
 
         # save the file to the new path
-        save_callback(next_version_path)
+        save_callback(next_version_path, *args, **kwargs)
         self.logger.info("File saved as: %s" % (next_version_path,))
 
         return next_version_path

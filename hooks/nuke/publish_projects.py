@@ -9,30 +9,23 @@
 # not expressly granted therein are reserved by Shotgun Software Inc.
 
 import os
-import hou
+import itertools
+import nuke
 import sgtk
+from sgtk.util.filesystem import ensure_folder_exists
 
 HookBaseClass = sgtk.get_hook_baseclass()
 
 
-HOUDINI_SESSION_ITEM_TYPE_SETTINGS = {
-    "houdini.session": {
-        "publish_type": "Houdini Scene",
+NUKESTUDIO_PROJECTS_ITEM_TYPE_SETTINGS = {
+    "nukestudio.project": {
+        "publish_type": "NukeStudio Project",
         "publish_name_template": None,
         "publish_path_template": None
     }
 }
 
-# A list of input node types to check as dependencies
-# A dict of dicts organized by category, type and output file parm
-_HOUDINI_INPUTS = {
-    # sops
-    hou.sopNodeTypeCategory(): {
-        "alembic": "fileName",    # alembic cache
-    },
-}
-
-class HoudiniPublishSessionPlugin(HookBaseClass):
+class NukeStudioPublishProjectsPlugin(HookBaseClass):
     """
     Inherits from PublishFilesPlugin
     """
@@ -41,7 +34,7 @@ class HoudiniPublishSessionPlugin(HookBaseClass):
         """
         One line display name describing the plugin
         """
-        return "Publish Houdini Session"
+        return "Publish NukeStudio Project(S)"
 
     @property
     def description(self):
@@ -50,7 +43,7 @@ class HoudiniPublishSessionPlugin(HookBaseClass):
         contain simple html for formatting.
         """
 
-        desc = super(HoudiniPublishSessionPlugin, self).description
+        desc = super(NukeStudioPublishProjectsPlugin, self).description
 
         return desc + "<br><br>" + """
         After publishing, if a version number is detected in the file, the file
@@ -85,9 +78,9 @@ class HoudiniPublishSessionPlugin(HookBaseClass):
         The type string should be one of the data types that toolkit accepts
         as part of its environment configuration.
         """
-        schema = super(HoudiniPublishSessionPlugin, self).settings_schema
-        schema["Item Type Filters"]["default_value"] = ["houdini.session"]
-        schema["Item Type Settings"]["default_value"] = HOUDINI_SESSION_ITEM_TYPE_SETTINGS
+        schema = super(NukeStudioPublishProjectsPlugin, self).settings_schema
+        schema["Item Type Filters"]["default_value"] = ["nukestudio.project"]
+        schema["Item Type Settings"]["default_value"] = NUKESTUDIO_PROJECTS_ITEM_TYPE_SETTINGS
         return schema
 
 
@@ -125,13 +118,13 @@ class HoudiniPublishSessionPlugin(HookBaseClass):
                         "label": "Save to v%s" % (version,),
                         "tooltip": "Save to the next available version number, "
                                    "v%s" % (version,),
-                        "callback": lambda: _save_session(next_version_path)
+                        "callback": lambda: _save_session(next_version_path, item.properties.project)
                     }
                 }
             )
             return False
 
-        return super(HoudiniPublishSessionPlugin, self).validate(task_settings, item)
+        return super(NukeStudioPublishProjectsPlugin, self).validate(task_settings, item)
 
 
     def publish(self, task_settings, item):
@@ -144,13 +137,10 @@ class HoudiniPublishSessionPlugin(HookBaseClass):
         :param item: Item to process
         """
 
-        # ensure the session is saved
-        _save_session(sgtk.util.ShotgunPath.normalize(item.properties.path))
+        # ensure the project is saved
+        _save_session(sgtk.util.ShotgunPath.normalize(item.properties.path, item.properties.project))
 
-        # Store any file dependencies
-        item.properties.publish_dependency_paths = self._get_dependency_paths()
-
-        super(HoudiniPublishSessionPlugin, self).publish(task_settings, item)
+        super(NukeStudioPublishProjectsPlugin, self).publish(task_settings, item)
 
 
     def finalize(self, task_settings, item):
@@ -163,75 +153,24 @@ class HoudiniPublishSessionPlugin(HookBaseClass):
             instances.
         :param item: Item to process
         """
-        super(HoudiniPublishSessionPlugin, self).finalize(task_settings, item)
+        super(NukeStudioPublishProjectsPlugin, self).finalize(task_settings, item)
 
         # version up the script file if the publish went through successfully.
         if item.properties.get("sg_publish_data_list"):
             # insert the next version path into the properties
-            item.properties.next_version_path = self._save_to_next_version(item.properties.path, _save_session)
+            item.properties.next_version_path = self._save_to_next_version(item.properties.path,
+                                                                           _save_session,
+                                                                           item.properties.project)
 
 
-    def _get_dependency_paths(self, node=None):
-        """
-        Find all dependency paths for the current node. If no node specified,
-        will return all dependency paths for the houdini scene.
-
-        :param node: Optional node to process
-        :return: List of upstream dependency paths
-        """
-        publisher = self.parent
-        dependency_paths = []
-
-        input_nodes = []
-        if node:
-            # Collect all upstream nodes to specified node
-            input_nodes = node.inputAncestors()
-
-        else:
-            # Collect all input nodes in this houdini session
-            for node_category in _HOUDINI_INPUTS:
-                for node_type in _HOUDINI_INPUTS[node_category]:
-                    # get all the nodes for the category and type
-                    input_nodes.extend(hou.nodeType(node_category, node_type).instances())
-
-        # figure out all the inputs to the node and pass them as dependency
-        # candidates
-        for dep_node in input_nodes:
-            if dep_node.isBypassed():
-                continue
-
-            node_type = dep_node.type().name()
-            node_category = dep_node.type().category().name()
-
-            # Ensure this is a matching input node type
-            if node_category not in _HOUDINI_INPUTS or \
-               node_type not in _HOUDINI_INPUTS[node_category]:
-                continue
-
-            path_parm_name = _HOUDINI_INPUTS[node_category][node_type]
-
-            file_path = dep_node.evalParm(path_parm_name)
-            if not file_path:
-                continue
-
-            file_path = sgtk.util.ShotgunPath.normalize(file_path)
-
-            # Check if the input path contains a frame number
-            seq_path = publisher.util.get_frame_sequence_path(file_path)
-            if seq_path:
-                # If so, then use the path with the frame number replaced with the frame spec
-                file_path = seq_path
-
-            dependency_paths.append(file_path)
-
-        return dependency_paths
-
-
-def _save_session(path):
+def _save_session(path, project):
     """
     Save the current session to the supplied path.
+    :param path: str path to save the file
+    :param project: Nuke Studio Project obj
+    :return: None
     """
-    # We need to flip the slashes on Windows to avoid a bug in Houdini. If we don't
-    # the next Save As dialog will have the filename box populated with the complete
-    # file path.
-    hou.hipFile.save(file_name=path.replace("\\", "/").encode("utf-8"))
+
+    # Nuke Studio won't ensure that the folder is created when saving, so we must make sure it exists
+    ensure_folder_exists(os.path.dirname(path))
+    project.saveAs(path)

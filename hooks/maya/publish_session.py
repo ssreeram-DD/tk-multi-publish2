@@ -78,8 +78,8 @@ class MayaPublishSessionPlugin(HookBaseClass):
         as part of its environment configuration.
         """
         schema = super(MayaPublishSessionPlugin, self).settings_schema
-        schema["Item Type Filters"]["default_value"].append("maya.session")
-        schema["Item Type Settings"]["default_value"].update(MAYA_SESSION_ITEM_TYPE_SETTINGS)
+        schema["Item Type Filters"]["default_value"] = ["maya.session"]
+        schema["Item Type Settings"]["default_value"] = MAYA_SESSION_ITEM_TYPE_SETTINGS
         return schema
 
 
@@ -96,34 +96,32 @@ class MayaPublishSessionPlugin(HookBaseClass):
         """
         publisher = self.parent
 
-        if item.type == 'maya.session':
+        # if the file has a version number in it, see if the next version exists
+        next_version_path = publisher.util.get_next_version_path(item.properties.path)
+        if next_version_path and os.path.exists(next_version_path):
 
-            # if the file has a version number in it, see if the next version exists
-            next_version_path = publisher.util.get_next_version_path(item.properties.path)
-            if next_version_path and os.path.exists(next_version_path):
+            # determine the next available version_number. just keep asking for
+            # the next one until we get one that doesn't exist.
+            while os.path.exists(next_version_path):
+                next_version_path = publisher.util.get_next_version_path(
+                    next_version_path)
 
-                # determine the next available version_number. just keep asking for
-                # the next one until we get one that doesn't exist.
-                while os.path.exists(next_version_path):
-                    next_version_path = publisher.util.get_next_version_path(
-                        next_version_path)
+            # now extract the version number of the next available to display
+            # to the user
+            version = publisher.util.get_version_number(next_version_path)
 
-                # now extract the version number of the next available to display
-                # to the user
-                version = publisher.util.get_version_number(next_version_path)
-
-                self.logger.error(
-                    "The next version of this file already exists on disk.",
-                    extra={
-                        "action_button": {
-                            "label": "Save to v%s" % (version,),
-                            "tooltip": "Save to the next available version number, "
-                                       "v%s" % (version,),
-                            "callback": lambda: _save_session(next_version_path)
-                        }
+            self.logger.error(
+                "The next version of this file already exists on disk.",
+                extra={
+                    "action_button": {
+                        "label": "Save to v%s" % (version,),
+                        "tooltip": "Save to the next available version number, "
+                                   "v%s" % (version,),
+                        "callback": lambda: _save_session(next_version_path)
                     }
-                )
-                return False
+                }
+            )
+            return False
 
         return super(MayaPublishSessionPlugin, self).validate(task_settings, item)
 
@@ -139,11 +137,10 @@ class MayaPublishSessionPlugin(HookBaseClass):
         """
 
         # ensure the session is saved
-        if item.type == 'maya.session':
-            _save_session(sgtk.util.ShotgunPath.normalize(item.properties.path))
+        _save_session(sgtk.util.ShotgunPath.normalize(item.properties.path))
 
-            # Store any file dependencies
-            item.properties.publish_dependency_paths = self._get_dependency_paths()
+        # Store any file dependencies
+        item.properties.publish_dependency_paths = self._get_dependency_paths()
 
         super(MayaPublishSessionPlugin, self).publish(task_settings, item)
 
@@ -161,7 +158,7 @@ class MayaPublishSessionPlugin(HookBaseClass):
         super(MayaPublishSessionPlugin, self).finalize(task_settings, item)
 
         # version up the scene file if the publish went through successfully.
-        if item.type == 'maya.session' and item.properties.get("sg_publish_data_list"):
+        if item.properties.get("sg_publish_data_list"):
             # insert the next version path into the properties
             item.properties.next_version_path = self._save_to_next_version(item.properties.path, _save_session)
 

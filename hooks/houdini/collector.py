@@ -114,6 +114,10 @@ class HoudiniSessionCollector(HookBaseClass):
         # collect other, non-toolkit outputs to present for publishing
         items.extend(self.collect_node_outputs(settings, session_item))
 
+        # if we have work path templates, collect matching files to publish
+        for work_template in settings["Work File Templates"].value:
+            items.extend(self.collect_work_files(settings, session_item, work_template))
+
         # Return the list of items
         return items
 
@@ -336,6 +340,78 @@ class HoudiniSessionCollector(HookBaseClass):
             items.append(item)
 
             self._mantra_nodes_collected = True
+
+
+    def collect_work_files(self, settings, parent_item, work_template):
+        """
+        Creates items for files matching the work path template
+        """
+        items = []
+        try:
+            work_paths = self._get_work_paths(parent_item, work_template)
+            for work_path in work_paths:
+                item = self._collect_file(settings, parent_item, work_path)
+                if not item:
+                    continue
+
+				# Track the current work template being processed
+                item.properties.work_path_template = work_template
+
+                # Add the item to the list
+                items.append(item)
+
+        except Exception as e:
+            self.logger.warning("%s. Skipping..." % str(e))
+
+        return items
+
+
+    def _get_work_paths(self, parent_item, work_path_template):
+        """
+        Get paths matching the work path template using the supplied item's fields.
+
+        :param parent_item: The item to determine the work path for
+        :param work_path_template: The template string to resolve
+
+        :return: A list of paths matching the resolved work path template for
+            the supplied item
+
+        Extracts the work path via the configured work templates
+        if possible.
+        """
+
+        publisher = self.parent
+
+        # Start with the item's fields, minus extension
+        fields = copy.deepcopy(parent_item.properties.get("fields", {}))
+        fields.pop("extension", None)
+
+        work_tmpl = publisher.get_template_by_name(work_path_template)
+        if not work_tmpl:
+            # this template was not found in the template config!
+            raise TankError("The Template '%s' does not exist!" % work_path_template)
+
+        # First get the fields from the context
+        try:
+            fields.update(parent_item.context.as_template_fields(work_tmpl))
+        except TankError:
+            self.logger.warning(
+                "Unable to get context fields for work_path_template.")
+
+        # Get the paths from the template using the known fields
+        self.logger.info(
+            "Searching for file(s) matching: '%s'" % work_path_template,
+            extra={
+                "action_show_more_info": {
+                    "label": "Show Info",
+                    "tooltip": "Show more info",
+                    "text": "Template: %s\nFields: %s" % (work_tmpl, fields)
+                }
+            }
+        )
+        return self.sgtk.abstract_paths_from_template(work_tmpl,
+                                                      fields,
+                                                      skip_missing_optional_keys=True)
 
 
     def _resolve_work_path_template(self, settings, item):

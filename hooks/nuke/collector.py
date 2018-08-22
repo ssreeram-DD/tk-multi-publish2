@@ -11,6 +11,7 @@
 import os
 import nuke
 import sgtk
+from sgtk.platform.qt import QtGui
 
 HookBaseClass = sgtk.get_hook_baseclass()
 
@@ -72,6 +73,17 @@ class NukeSessionCollector(HookBaseClass):
         """
         schema = super(NukeSessionCollector, self).settings_schema
         schema["Item Types"]["default_value"].update(NUKE_ITEM_TYPES)
+        schema["Work File Templates"] = {
+            "type": "list",
+            "values": {
+                "type": "template",
+                "description": "",
+                "fields": ["context", "*"]
+            },
+            "default_value": [],
+            "allows_empty": True,
+            "description": "A list of templates to use to search for work files."
+        }
         return schema
 
 
@@ -105,6 +117,10 @@ class NukeSessionCollector(HookBaseClass):
 
         # Also collect any output node items
         items.extend(self.collect_node_outputs(settings, session_item))
+
+        # if we have work path templates, collect matching files to publish
+        for work_template in settings["Work File Templates"].value:
+            items.extend(self.collect_work_files(settings, session_item, work_template))
 
         # Return the list of items
         return items
@@ -164,6 +180,18 @@ class NukeSessionCollector(HookBaseClass):
         items = []
         for project in hiero.core.projects():
 
+            # get the current path
+            file_path = project.path()
+            if not file_path:
+                # the project has not been saved before (no path determined).
+                # provide a save button. the project will need to be saved before
+                # validation will succeed.
+                self.logger.warning(
+                    "The Nuke Studio project '%s' has not been saved." %
+                    (project.name()),
+                    extra=self._get_save_as_action(project)
+                )
+
             # Define the item's properties
             properties = {}
 
@@ -172,12 +200,15 @@ class NukeSessionCollector(HookBaseClass):
             properties["project"] = project
 
             # create the session item for the publish hierarchy
-            project_item = self._add_item(settings,
-                                          parent_item,
-                                          project.name(),
-                                          "nukestudio.project",
-                                          parent_item.context,
-                                          properties)
+            project_item = self._add_file_item(settings,
+                                               parent_item,
+                                               project.path(),
+                                               False,
+                                               None,
+                                               project.name(),
+                                               "nukestudio.project",
+                                               parent_item.context,
+                                               properties)
 
             self.logger.info(
                 "Collected Nuke Studio project: %s" % (project_item.name,))
@@ -272,6 +303,78 @@ class NukeSessionCollector(HookBaseClass):
         return items
 
 
+    def collect_work_files(self, settings, parent_item, work_template):
+        """
+        Creates items for files matching the work path template
+        """
+        items = []
+        try:
+            work_paths = self._get_work_paths(parent_item, work_template)
+            for work_path in work_paths:
+                item = self._collect_file(settings, parent_item, work_path)
+                if not item:
+                    continue
+
+				# Track the current work template being processed
+                item.properties.work_path_template = work_template
+
+                # Add the item to the list
+                items.append(item)
+
+        except Exception as e:
+            self.logger.warning("%s. Skipping..." % str(e))
+
+        return items
+
+
+    def _get_work_paths(self, parent_item, work_path_template):
+        """
+        Get paths matching the work path template using the supplied item's fields.
+
+        :param parent_item: The item to determine the work path for
+        :param work_path_template: The template string to resolve
+
+        :return: A list of paths matching the resolved work path template for
+            the supplied item
+
+        Extracts the work path via the configured work templates
+        if possible.
+        """
+
+        publisher = self.parent
+
+        # Start with the item's fields, minus extension
+        fields = copy.deepcopy(parent_item.properties.get("fields", {}))
+        fields.pop("extension", None)
+
+        work_tmpl = publisher.get_template_by_name(work_path_template)
+        if not work_tmpl:
+            # this template was not found in the template config!
+            raise TankError("The Template '%s' does not exist!" % work_path_template)
+
+        # First get the fields from the context
+        try:
+            fields.update(parent_item.context.as_template_fields(work_tmpl))
+        except TankError:
+            self.logger.warning(
+                "Unable to get context fields for work_path_template.")
+
+        # Get the paths from the template using the known fields
+        self.logger.info(
+            "Searching for file(s) matching: '%s'" % work_path_template,
+            extra={
+                "action_show_more_info": {
+                    "label": "Show Info",
+                    "tooltip": "Show more info",
+                    "text": "Template: %s\nFields: %s" % (work_tmpl, fields)
+                }
+            }
+        )
+        return self.sgtk.abstract_paths_from_template(work_tmpl,
+                                                      fields,
+                                                      skip_missing_optional_keys=True)
+
+
     def _resolve_work_path_template(self, settings, item):
         """
         Resolve work_path_template from the collector settings for the specified item.
@@ -317,12 +420,15 @@ class NukeSessionCollector(HookBaseClass):
         return fields
 
 
-    def _get_save_as_action(self):
+    def _get_save_as_action(self, project=None):
         """
         Simple helper for returning a log action dict for saving the session
         """
         # default save callback
-        callback = nuke.scriptSaveAs
+        if project:
+            callback = lambda: _project_save_as(project)
+        else:
+            callback = nuke.scriptSaveAs
 
         # if workfiles2 is configured, use that for file save
         if self.__workfiles_app:
@@ -345,3 +451,32 @@ def _session_path():
     root_name = nuke.root().name()
     return None if root_name == "Root" else root_name
 
+
+def _project_save_as(project):
+    """
+    A save as wrapper for the current session.
+
+    :param path: Optional path to save the current session as.
+    """
+    # TODO: consider moving to engine
+
+    # import here since the hooks are imported into nuke and nukestudio.
+    # hiero module is only available in later versions of nuke
+    import hiero
+
+    # nuke studio/hiero don't appear to have a "save as" dialog accessible via
+    # python. so open our own Qt file dialog.
+    file_dialog = QtGui.QFileDialog(
+        parent=hiero.ui.mainWindow(),
+        caption="Save As",
+        directory=project.path(),
+        filter="Nuke Studio Files (*.hrox)"
+    )
+    file_dialog.setLabelText(QtGui.QFileDialog.Accept, "Save")
+    file_dialog.setLabelText(QtGui.QFileDialog.Reject, "Cancel")
+    file_dialog.setOption(QtGui.QFileDialog.DontResolveSymlinks)
+    file_dialog.setOption(QtGui.QFileDialog.DontUseNativeDialog)
+    if not file_dialog.exec_():
+        return
+    path = file_dialog.selectedFiles()[0]
+    project.saveAs(path)

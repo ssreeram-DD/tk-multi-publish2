@@ -58,28 +58,9 @@ class MariPublishSessionPlugin(HookBaseClass):
         as part of its environment configuration.
         """
         schema = super(MariPublishSessionPlugin, self).settings_schema
-        schema["Item Type Filters"]["default_value"].append("mari.session")
-        schema["Item Type Settings"]["default_value"].update(MARI_SESSION_ITEM_TYPE_SETTINGS)
+        schema["Item Type Filters"]["default_value"] = ["mari.session"]
+        schema["Item Type Settings"]["default_value"] = MARI_SESSION_ITEM_TYPE_SETTINGS
         return schema
-
-
-    def validate(self, task_settings, item):
-        """
-        Validates the given item to check that it is ok to publish. Returns a
-        boolean to indicate validity.
-
-        :param task_settings: Dictionary of Settings. The keys are strings, matching
-            the keys returned in the settings property. The values are `Setting`
-            instances.
-        :param item: Item to process
-        :returns: True if item is valid, False otherwise.
-        """
-
-        if item.type == "mari.session":
-            # TODO - do we need any validations?
-            pass
-
-        return super(MariPublishSessionPlugin, self).validate(task_settings, item)
 
 
     def publish(self, task_settings, item):
@@ -91,13 +72,11 @@ class MariPublishSessionPlugin(HookBaseClass):
             instances.
         :param item: Item to process
         """
+        self.logger.info("Saving the current project...")
+        mari.projects.current().save()
 
-        if item.type == 'mari.session':
-            self.logger.info("Saving the current project...")
-            mari.projects.current().save()
-
-            # Store any publish dependencies
-            item.properties.publish_dependency_ids = self._get_dependency_ids()
+        # Store any publish dependencies
+        item.properties.publish_dependency_ids = self._get_dependency_ids()
 
         return super(MariPublishSessionPlugin, self).publish(task_settings, item)
 
@@ -115,7 +94,7 @@ class MariPublishSessionPlugin(HookBaseClass):
         super(MariPublishSessionPlugin, self).finalize(task_settings, item)
 
         # version up the session if the publish went through successfully.
-        if item.type == 'mari.session' and item.properties.get("sg_publish_data_list"):
+        if item.properties.get("sg_publish_data_list"):
             # save the new version number in the session metadata
             next_version = int(item.properties.publish_version) + 1
 
@@ -136,10 +115,7 @@ class MariPublishSessionPlugin(HookBaseClass):
         :param item: Item to process
         :param publish_path: The output path to publish files to
         """
-        if item.type == "mari.session":
-            return self._export_mari_session(task_settings, item, publish_path)
-
-        return super(MariPublishSessionPlugin, self).publish_files(task_settings, item, publish_path)
+        return self._export_mari_session(task_settings, item, publish_path)
 
 
     def _export_mari_session(self, task_settings, item, publish_path):
