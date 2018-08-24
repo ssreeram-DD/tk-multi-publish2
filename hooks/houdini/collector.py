@@ -219,6 +219,8 @@ class HoudiniSessionCollector(HookBaseClass):
                     # Add item to the list
                     items.append(item)
 
+        return items
+
 
     def collect_tk_alembicnodes(self, settings, parent_item):
         """
