@@ -172,27 +172,45 @@ class BasicPathInfo(HookBaseClass):
             # Attempt to match the path to a template
             path_tmpl = self.sgtk.template_from_path(path)
             if path_tmpl:
-                key_name = None
+                # Find the first instance of a SequenceKey
+                seq_key = None
                 for key in path_tmpl.keys.values():
                     if isinstance(key, SequenceKey):
-                        key_name = key.name
+                        seq_key = key
                         break
 
-                # If we have a sequence key, get the field value
-                if key_name:
+                # If found, rebuild the path using the default value for the sequence key
+                if seq_key:
                     fields = path_tmpl.get_fields(path)
-                    frame_spec = fields[key_name]
 
-        # Else try to use the default value for the "SEQ" template key
-        if not frame_spec:
-            seq_key = self.sgtk.template_keys.get("SEQ")
-            if seq_key:
-                frame_spec = seq_key.default
-            # Else just default to a 4 pad
+                    # Delete the key since apply_fields() will plug-in defaults
+                    # for missing fields
+                    del fields[seq_key.name]
+                    path = path_tmpl.apply_fields(fields)
+
+                    # Re-process the path info
+                    path_info = publisher.util.get_file_path_components(path)
+
+                    # Store the default as the frame_spec
+                    # NOTE: we do this as opposed to using apply_fields to apply the frame_num
+                    # in case the user is requesting to replace with a value that wouldn't
+                    # normally meet the TemplateKey value requirements (i.e. "*")
+                    frame_spec = seq_key.default
+
+                else:
+                    # We matched a path that doesn't contain a sequence key, so we
+                    # have nothing to replace
+                    return None
             else:
-                frame_spec = "%%04d"
+                # We didn't match a template so attempt to use the "SEQ" key default value
+                seq_key = self.sgtk.template_keys.get("SEQ")
+                if seq_key:
+                    frame_spec = seq_key.default
+                else:
+                    # Else just default to searching for a 4 pad
+                    frame_spec = "%04d"
 
-        # see if there is a frame number
+        # see if there is a frame spec
         SPEC_REGEX = re.compile("(.*)([._-])(%s)\.([^.]+)$" % re.escape(frame_spec))
         frame_pattern_match = re.search(SPEC_REGEX, path_info["filename"])
 
@@ -232,7 +250,7 @@ class BasicPathInfo(HookBaseClass):
         path = sgtk.util.ShotgunPath.normalize(path)
 
         # Check to see if the input path contains a frame_spec
-        frame_path = self.get_path_for_frame(path, 1001)
+        frame_path = self.get_path_for_frame(path, 1001, frame_spec)
         if frame_path:
             # If we were able to do a successful substitution, then the input
             # path is a sequence path, so just return the input path
@@ -268,7 +286,7 @@ class BasicPathInfo(HookBaseClass):
         # build the full sequence path
         return os.path.join(path_info["folder"], seq_filename)
 
-    def get_sequence_path_files(self, seq_path):
+    def get_sequence_path_files(self, seq_path, frame_spec=None):
         """
         Given a sequence path, find all related files on disk
 
@@ -281,7 +299,7 @@ class BasicPathInfo(HookBaseClass):
         path = sgtk.util.ShotgunPath.normalize(seq_path)
 
         # find files that match the pattern
-        seq_pattern = self.get_path_for_frame(path, "*")
+        seq_pattern = self.get_path_for_frame(path, "*", frame_spec)
         seq_files = [f for f in glob.iglob(seq_pattern) if os.path.isfile(f)]
 
         # Sort the resulting list

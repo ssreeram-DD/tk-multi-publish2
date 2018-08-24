@@ -254,11 +254,12 @@ def get_frame_sequence_path(path, frame_spec=None):
     )
 
 
-def get_sequence_path_files(seq_path):
+def get_sequence_path_files(seq_path, frame_spec=None):
     """
     Given a sequence path, find all related files on disk
 
     :param path: The input sequence path with a frame spec
+    :param frame_spec: The frame specification to replace the frame number with.
 
     :return: A list of matching file paths
     """
@@ -271,7 +272,8 @@ def get_sequence_path_files(seq_path):
     return publisher.execute_hook_method(
         "path_info",
         "get_sequence_path_files",
-        seq_path=seq_path
+        seq_path=seq_path,
+        frame_spec=frame_spec
     )
 
 
