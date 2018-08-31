@@ -41,4 +41,4 @@ class HoudiniCreateVersionPlugin(HookBaseClass):
         """
         Get the nuke session frame range
         """
-        return hou.playbar.playbackRange()
+        return map(lambda x: int(x), hou.playbar.playbackRange())
