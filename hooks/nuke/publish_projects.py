@@ -138,7 +138,7 @@ class NukeStudioPublishProjectsPlugin(HookBaseClass):
         """
 
         # ensure the project is saved
-        _save_session(sgtk.util.ShotgunPath.normalize(item.properties.path, item.properties.project))
+        _save_session(sgtk.util.ShotgunPath.normalize(item.properties.path), item.properties.project)
 
         super(NukeStudioPublishProjectsPlugin, self).publish(task_settings, item)
 
