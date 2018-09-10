@@ -188,6 +188,8 @@ class BasicPathInfo(HookBaseClass):
                     try:
                         del fields[seq_key.name]
                     except KeyError:
+                        # if sequence key is not found, it is optional,
+                        # and the path is not part of a sequence
                         return None
                     path = path_tmpl.apply_fields(fields)
 
