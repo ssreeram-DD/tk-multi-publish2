@@ -185,7 +185,12 @@ class BasicPathInfo(HookBaseClass):
 
                     # Delete the key since apply_fields() will plug-in defaults
                     # for missing fields
-                    del fields[seq_key.name]
+                    try:
+                        del fields[seq_key.name]
+                    except KeyError:
+                        # if sequence key is not found, it is optional,
+                        # and the path is not part of a sequence
+                        return None
                     path = path_tmpl.apply_fields(fields)
 
                     # Re-process the path info
