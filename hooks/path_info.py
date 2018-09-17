@@ -29,7 +29,7 @@ VERSION_REGEX = re.compile("(.*)([._-])v(\d+)\.?(\S+)?$", re.IGNORECASE)
 # this implementation assumes the version number is of the form '.####'
 # coming just before the extension in the filename and just after a '.', '_',
 # or '-'.
-FRAME_REGEX = re.compile("(.*)([._-])(\d+)\.([^.]+)$", re.IGNORECASE)
+FRAME_REGEX = re.compile("(.*)([._-])(\d+)\.(\S+)$", re.IGNORECASE)
 
 
 class BasicPathInfo(HookBaseClass):
@@ -216,7 +216,7 @@ class BasicPathInfo(HookBaseClass):
                     frame_spec = "%04d"
 
         # see if there is a frame spec
-        SPEC_REGEX = re.compile("(.*)([._-])(%s)\.([^.]+)$" % re.escape(frame_spec))
+        SPEC_REGEX = re.compile("(.*)([._-])(%s)\.(\S+)$" % re.escape(frame_spec))
         frame_pattern_match = re.search(SPEC_REGEX, path_info["filename"])
 
         if not frame_pattern_match:
