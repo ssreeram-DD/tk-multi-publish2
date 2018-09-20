@@ -657,8 +657,9 @@ class PublishPluginBase(PluginBase):
             else:
                 dest_file = dest_path
 
-            # If the file paths are the same, skip...
+            # If the file paths are the same, lock permissions
             if src_file == dest_file:
+                filesystem.freeze_permissions(dest_file)
                 continue
 
             # copy the file
