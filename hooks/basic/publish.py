@@ -252,38 +252,47 @@ class PublishPlugin(HookBaseClass):
                 }
             )
 
-        # ---- ensure the published file(s) don't already exist on disk
-
-        conflict_info = None
         if item.properties.get("is_sequence"):
-            seq_pattern = publisher.util.get_path_for_frame(item.properties.publish_path, "*")
-            seq_files = [f for f in glob.iglob(seq_pattern) if os.path.isfile(f)]
-
-            if seq_files:
-                conflict_info = (
-                    "The following files already exist!<br>"
-                    "<pre>%s</pre>" % (pprint.pformat(seq_files),)
-                )
+            path = publisher.util.get_path_for_frame(item.properties.path, "*")
+            publish_path = publisher.util.get_path_for_frame(item.properties.publish_path, "*")
         else:
-            if os.path.exists(item.properties.publish_path):
-                conflict_info = (
-                    "The following file already exists!<br>"
-                    "<pre>%s</pre>" % (item.properties.publish_path,)
-                )
+            path = item.properties.path
+            publish_path = item.properties.publish_path
 
-        if conflict_info:
-            self.logger.error(
-                "Version '%s' of this file already exists on disk." %
-                    (item.properties.publish_version,),
-                extra={
-                    "action_show_more_info": {
-                        "label": "Show Conflicts",
-                        "tooltip": "Show the conflicting published files",
-                        "text": conflict_info
+        # ---- check if its an in place publish
+        if path != publish_path:
+            # ---- ensure the published file(s) don't already exist on disk
+
+            conflict_info = None
+            if item.properties.get("is_sequence"):
+                seq_pattern = publisher.util.get_path_for_frame(item.properties.publish_path, "*")
+                seq_files = [f for f in glob.iglob(seq_pattern) if os.path.isfile(f)]
+
+                if seq_files:
+                    conflict_info = (
+                        "The following files already exist!<br>"
+                        "<pre>%s</pre>" % (pprint.pformat(seq_files),)
+                    )
+            else:
+                if os.path.exists(item.properties.publish_path):
+                    conflict_info = (
+                        "The following file already exists!<br>"
+                        "<pre>%s</pre>" % (item.properties.publish_path,)
+                    )
+
+            if conflict_info:
+                self.logger.error(
+                    "Version '%s' of this file already exists on disk." %
+                        (item.properties.publish_version,),
+                    extra={
+                        "action_show_more_info": {
+                            "label": "Show Conflicts",
+                            "tooltip": "Show the conflicting published files",
+                            "text": conflict_info
+                        }
                     }
-                }
-            )
-            return False
+                )
+                return False
 
         self.logger.info(
             "A Publish will be created for item '%s'." %
