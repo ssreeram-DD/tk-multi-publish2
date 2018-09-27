@@ -415,34 +415,45 @@ class BasicPathInfo(HookBaseClass):
 
         # default
         next_version_path = None
+        path_template = self.sgtk.template_from_path(path)
 
-        path_info = publisher.util.get_file_path_components(path)
-        filename = path_info["filename"]
+        if path_template:
+            # if the path fits a template, use that and increment the version field
+            fields = path_template.get_fields(path)
+            if "version" in fields:
+                fields["version"] = fields["version"] + 1
+                next_version_path = path_template.apply_fields(fields)
 
-        # see if there's a version in the supplied path
-        version_pattern_match = re.search(VERSION_REGEX, filename)
+        if not next_version_path:
+            # fallback to regex matching
+            # TODO: check entire path instead of just filename?
+            path_info = publisher.util.get_file_path_components(path)
+            filename = path_info["filename"]
 
-        if version_pattern_match:
-            prefix = version_pattern_match.group(1)
-            version_sep = version_pattern_match.group(2)
-            version_str = version_pattern_match.group(3)
-            extension = version_pattern_match.group(4) or ""
+            # see if there's a version in the supplied path
+            version_pattern_match = re.search(VERSION_REGEX, filename)
 
-            # make sure we maintain the same padding
-            padding = len(version_str)
+            if version_pattern_match:
+                prefix = version_pattern_match.group(1)
+                version_sep = version_pattern_match.group(2)
+                version_str = version_pattern_match.group(3)
+                extension = version_pattern_match.group(4) or ""
 
-            # bump the version number
-            next_version_number = int(version_str) + 1
+                # make sure we maintain the same padding
+                padding = len(version_str)
 
-            # create a new version string filled with the appropriate 0 padding
-            next_version_str = "v%s" % (str(next_version_number).zfill(padding))
+                # bump the version number
+                next_version_number = int(version_str) + 1
 
-            new_filename = "%s%s%s" % (prefix, version_sep, next_version_str)
-            if extension:
-                new_filename = "%s.%s" % (new_filename, extension)
+                # create a new version string filled with the appropriate 0 padding
+                next_version_str = "v%s" % (str(next_version_number).zfill(padding))
 
-            # build the new path in the same folder
-            next_version_path = os.path.join(path_info["folder"], new_filename)
+                new_filename = "%s%s%s" % (prefix, version_sep, next_version_str)
+                if extension:
+                    new_filename = "%s.%s" % (new_filename, extension)
+
+                # build the new path in the same folder
+                next_version_path = os.path.join(path_info["folder"], new_filename)
 
         logger.debug("Returning next version path: %s" % (next_version_path,))
         return next_version_path
