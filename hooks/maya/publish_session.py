@@ -12,6 +12,7 @@ import os
 import maya.cmds as cmds
 import maya.mel as mel
 import sgtk
+from sgtk.util.filesystem import ensure_folder_exists
 
 HookBaseClass = sgtk.get_hook_baseclass()
 
@@ -215,6 +216,7 @@ def _save_session(path):
     elif path.lower().endswith(".mb"):
         maya_file_type = "mayaBinary"
 
+    ensure_folder_exists(os.path.dirname(path))
     cmds.file(rename=path)
 
     # save the scene:
