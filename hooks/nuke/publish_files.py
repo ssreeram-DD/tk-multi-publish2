@@ -274,7 +274,7 @@ class NukePublishFilesPlugin(HookBaseClass):
 
         # figure out all the inputs to the node and pass them as dependency
         # candidates
-        dependency_paths = []
+        dependency_paths = set()
         for dep_node in input_nodes:
             if dep_node['disable'].value() == 1:
                 continue
@@ -290,9 +290,9 @@ class NukePublishFilesPlugin(HookBaseClass):
                 # If so, then use the path with the frame number replaced with the frame spec
                 file_path = seq_path
 
-            dependency_paths.append(file_path)
+            dependency_paths.add(file_path)
 
-        return dependency_paths
+        return list(dependency_paths)
 
 
 def _collect_dep_nodes(node, visited, dep_nodes):
