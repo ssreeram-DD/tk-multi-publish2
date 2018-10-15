@@ -14,19 +14,6 @@ import sgtk
 
 HookBaseClass = sgtk.get_hook_baseclass()
 
-# A dict of dicts organized by category, type and output file parm
-_HOUDINI_OUTPUTS = {
-    # rops
-    hou.ropNodeTypeCategory(): {
-        "alembic": "filename",    # alembic cache
-        "comp": "copoutput",      # composite
-        "ifd": "vm_picture",      # mantra render node
-        "opengl": "picture",      # opengl render
-        "wren": "wr_picture",     # wren wireframe
-    },
-}
-
-
 # This is a dictionary of file type info that allows the basic collector to
 # identify common production file types and associate them with a display name,
 # item type, and config icon.
@@ -52,6 +39,23 @@ class HoudiniSessionCollector(HookBaseClass):
 
         # cache the workfiles app
         self.__workfiles_app = self.parent.engine.apps.get("tk-multi-workfiles2")
+        self.houdini_sgtk_outputs = {
+            # rops
+            hou.ropNodeTypeCategory(): {
+                "alembic": "filename",    # alembic cache
+                "ifd": "vm_picture",      # mantra render node
+            },
+        }
+        self.houdini_native_outputs = {
+            # rops
+            hou.ropNodeTypeCategory(): {
+                "alembic": "filename",  # alembic cache
+                "comp": "copoutput",  # composite
+                "ifd": "vm_picture",  # mantra render node
+                "opengl": "picture",  # opengl render
+                "wren": "wr_picture",  # wren wireframe
+            },
+        }
 
 
     @property
@@ -103,13 +107,8 @@ class HoudiniSessionCollector(HookBaseClass):
         session_item = self.collect_current_houdini_session(settings, parent_item)
         items.append(session_item)
 
-        # remember if we collect any alembic/mantra nodes
-        self._alembic_nodes_collected = False
-        self._mantra_nodes_collected = False
-
-        # methods to collect tk alembic/mantra nodes if the app is installed
-        items.extend(self.collect_tk_alembicnodes(settings, session_item))
-        items.extend(self.collect_tk_mantranodes(settings, session_item))
+        # method to collect nodes if the app is installed
+        self.add_items(items, settings, session_item)
 
         # collect other, non-toolkit outputs to present for publishing
         items.extend(self.collect_node_outputs(settings, session_item))
@@ -119,6 +118,14 @@ class HoudiniSessionCollector(HookBaseClass):
             items.extend(self.collect_work_files(settings, session_item, work_template))
 
         # Return the list of items
+        return items
+
+    def add_items(self, items, settings, session_item):
+        for node in self.houdini_sgtk_outputs[hou.ropNodeTypeCategory()]:
+            setattr(self, "_{}_nodes_collected".format(node), False)
+            collect_method = getattr(self, "collect_tk_{}nodes".format(node))
+            items.extend(collect_method(settings, session_item))
+
         return items
 
 
@@ -169,24 +176,18 @@ class HoudiniSessionCollector(HookBaseClass):
         """
         items = []
 
-        for node_category in _HOUDINI_OUTPUTS:
-            for node_type in _HOUDINI_OUTPUTS[node_category]:
+        for node_category in self.houdini_native_outputs:
+            for node_type in self.houdini_native_outputs[node_category]:
 
-                if node_type == "alembic" and self._alembic_nodes_collected:
-                    self.logger.debug(
-                        "Skipping regular alembic node collection since tk "
-                        "alembic nodes were collected. "
-                    )
-                    continue
+                if self.houdini_sgtk_outputs.get(node_category, {}).get(node_type):
+                    if getattr(self, "_{}_nodes_collected".format(node_type)):
+                        self.logger.debug(
+                            "Skipping regular {0} node collection since tk "
+                            "{0} nodes were collected. ".format(node_type)
+                        )
+                        continue
 
-                if node_type == "ifd" and self._mantra_nodes_collected:
-                    self.logger.debug(
-                        "Skipping regular mantra node collection since tk "
-                        "mantra nodes were collected. "
-                    )
-                    continue
-
-                path_parm_name = _HOUDINI_OUTPUTS[node_category][node_type]
+                path_parm_name = self.houdini_native_outputs[node_category][node_type]
 
                 # get all the nodes for the category and type
                 nodes = hou.nodeType(node_category, node_type).instances()
@@ -285,7 +286,7 @@ class HoudiniSessionCollector(HookBaseClass):
         return items
 
 
-    def collect_tk_mantranodes(self, settings, parent_item):
+    def collect_tk_ifdnodes(self, settings, parent_item):
         """
         Checks for an installed `tk-houdini-mantranode` app. If installed, will
         search for instances of the node in the current session and create an
@@ -343,7 +344,7 @@ class HoudiniSessionCollector(HookBaseClass):
             # Add item to the list
             items.append(item)
 
-            self._mantra_nodes_collected = True
+            self._ifd_nodes_collected = True
 
         return items
 
