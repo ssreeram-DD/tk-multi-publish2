@@ -53,6 +53,7 @@ class PluginBase(object):
         # kick things off
         try:
             self._settings = self.build_settings_dict(self._bundle.context)
+            self._unresolved_settings = self.build_settings_dict(self._bundle.context, unresolved_setting=True)
         except Exception as e:
             error_msg = traceback.format_exc()
             self._logger.error(
@@ -60,6 +61,7 @@ class PluginBase(object):
                 (self, self._bundle.env.name, error_msg)
             )
             self._settings = {}
+            self._unresolved_settings = {}
 
         # add settings to cache
         settings_cache.add(self, self._bundle.context, self._settings)
@@ -98,13 +100,20 @@ class PluginBase(object):
         return self._settings
 
     @property
+    def unresolved_settings(self):
+        """
+        returns a dict of unresolved raw settings for this plugin
+        """
+        return self._unresolved_settings
+
+    @property
     def settings_schema(self):
         """
         returns a dict of resolved raw settings given the current state
         """
         return self._settings_schema
 
-    def build_settings_dict(self, context):
+    def build_settings_dict(self, context, unresolved_setting=False):
         """
         Init helper method.
 
@@ -117,10 +126,11 @@ class PluginBase(object):
                 "default": 5,
                 "description": "foo bar baz"
             }
+            :param unresolved_setting:
         """
 
         # Get the resolved settings for the plugin from the specified context
-        resolved_settings = self._get_resolved_plugin_settings(context)
+        resolved_settings = self._get_plugin_settings(context, unresolved_setting)
 
         new_settings = {}
         for setting_name, setting_schema in self._settings_schema.iteritems():
@@ -137,10 +147,11 @@ class PluginBase(object):
 
         return new_settings
 
-    def _get_resolved_plugin_settings(self, context):
+    def _get_plugin_settings(self, context, unresolved_setting=False):
         """
         Find and resolve settings for the plugin in the specified context
 
+        :param unresolved_setting: Return the values without resolving {env_name} or {engine_name}.
         :param context: Context in which to look for settings.
 
         :returns: The plugin settings for the given context or None.
@@ -160,7 +171,8 @@ class PluginBase(object):
             app.name,
             app.sgtk,
             context,
-            app.engine.instance_name
+            app.engine.instance_name,
+            unresolved_setting
         )
 
         # No settings found, raise an error
@@ -196,16 +208,17 @@ class PluginBase(object):
 
         # Create a new app instance from the new env / context
         new_app_obj = get_application(
-                app.engine, 
-                new_descriptor.get_path(), 
-                new_descriptor, 
-                new_settings, 
-                new_app, 
+                app.engine,
+                new_descriptor.get_path(),
+                new_descriptor,
+                new_settings,
+                new_app,
                 new_env,
                 context)
 
         # Inject this plugin's schema for proper resolution
-        resolved_settings = self._get_resolved_settings(new_app_obj)
+        resolved_settings = self._get_resolved_settings(new_app_obj, unresolved_setting)
+
         if not resolved_settings:
             raise TankError(
                 "Definition for app '%s' in env '%s' is missing settings for plugin "
@@ -213,6 +226,13 @@ class PluginBase(object):
             )
 
         return resolved_settings
+
+    def _get_resolved_settings(self, app_obj, unresolved_setting=False):
+        """
+        :param app_obj: App object to resolve the value for.
+        :param unresolved_setting: Return the values without resolving {env_name} or {engine_name}.
+        """
+        raise NotImplementedError
 
     @contextmanager
     def _handle_plugin_error(self, success_msg, error_msg):
@@ -313,8 +333,10 @@ class PublishPlugin(PluginBase):
 
         return pixmap
 
-    def _get_resolved_settings(self, app_obj):
+    def _get_resolved_settings(self, app_obj, unresolved_setting=False):
         """
+        :param app_obj: App object to resolve the value for.
+        :param unresolved_setting: Return the values without resolving {env_name} or {engine_name}.
         """
         # Inject this plugin's schema for proper resolution
         new_schema = copy.deepcopy(app_obj.descriptor.configuration_schema)        
@@ -329,7 +351,8 @@ class PublishPlugin(PluginBase):
                     "publish_plugins",
                     None,
                     bundle=app_obj,
-                    validate=True
+                    validate=True,
+                    unresolved_setting=unresolved_setting
                 )
 
         # Now get the plugin settings matching this plugin
@@ -633,8 +656,10 @@ class CollectorPlugin(PluginBase):
         with self._handle_plugin_error(None, "Error changing context: %s"):
             self._hook_instance.on_context_changed(settings, item)
 
-    def _get_resolved_settings(self, app_obj):
+    def _get_resolved_settings(self, app_obj, unresolved_setting=False):
         """
+        :param app_obj: App object to resolve the value for.
+        :param unresolved_setting: Return the values without resolving {env_name} or {engine_name}.
         """
         # Inject this plugin's schema for proper resolution
         new_schema = copy.deepcopy(app_obj.descriptor.configuration_schema)        
@@ -649,7 +674,8 @@ class CollectorPlugin(PluginBase):
                     "collector_settings",
                     None,
                     bundle=app_obj,
-                    validate=True
+                    validate=True,
+                    unresolved_setting=unresolved_setting
                 )
 
         return resolved_settings
