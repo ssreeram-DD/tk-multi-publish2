@@ -121,6 +121,17 @@ class HoudiniSessionCollector(HookBaseClass):
         return items
 
     def add_items(self, items, settings, session_item):
+        """
+        For each item in houdini_sgtk_outputs set respective node_collected to False and add to items
+        eg for alembic node:
+            _alembic_nodes_collected = False
+            items.extend(collect_tk_alembicnodes(settings, session_item))
+        :param items: list with collected session items
+        :param settings: Configured settings for this collector
+        :param session_item: Current houdini session
+
+        :return: Item list with collected nodes
+        """
         for node in self.houdini_sgtk_outputs[hou.ropNodeTypeCategory()]:
             setattr(self, "_{}_nodes_collected".format(node), False)
             collect_method = getattr(self, "collect_tk_{}nodes".format(node))
