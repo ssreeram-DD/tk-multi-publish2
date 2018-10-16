@@ -107,9 +107,6 @@ class HoudiniSessionCollector(HookBaseClass):
         session_item = self.collect_current_houdini_session(settings, parent_item)
         items.append(session_item)
 
-        # method to collect nodes if the app is installed
-        self.add_items(items, settings, session_item)
-
         # collect other, non-toolkit outputs to present for publishing
         items.extend(self.collect_node_outputs(settings, session_item))
 
@@ -118,25 +115,6 @@ class HoudiniSessionCollector(HookBaseClass):
             items.extend(self.collect_work_files(settings, session_item, work_template))
 
         # Return the list of items
-        return items
-
-    def add_items(self, items, settings, session_item):
-        """
-        For each item in houdini_sgtk_outputs set respective node_collected to False and add to items
-        eg for alembic node:
-            _alembic_nodes_collected = False
-            items.extend(collect_tk_alembicnodes(settings, session_item))
-        :param items: list with collected session items
-        :param settings: Configured settings for this collector
-        :param session_item: Current houdini session
-
-        :return: Item list with collected nodes
-        """
-        for node in self.houdini_sgtk_outputs[hou.ropNodeTypeCategory()]:
-            setattr(self, "_{}_nodes_collected".format(node), False)
-            collect_method = getattr(self, "collect_tk_{}nodes".format(node))
-            items.extend(collect_method(settings, session_item))
-
         return items
 
 
@@ -186,6 +164,12 @@ class HoudiniSessionCollector(HookBaseClass):
         :param parent_item: The parent item for any write geo nodes collected
         """
         items = []
+
+        # collect nodes if the app is installed
+        for node in self.houdini_sgtk_outputs[hou.ropNodeTypeCategory()]:
+            setattr(self, "_{}_nodes_collected".format(node), False)
+            collect_method = getattr(self, "collect_tk_{}nodes".format(node))
+            items.extend(collect_method(settings, parent_item))
 
         for node_category in self.houdini_native_outputs:
             for node_type in self.houdini_native_outputs[node_category]:
