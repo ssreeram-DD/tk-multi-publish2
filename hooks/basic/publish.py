@@ -256,7 +256,7 @@ class PublishPlugin(HookBaseClass):
             path = publisher.util.get_path_for_frame(item.properties.path, "*")
             publish_path = publisher.util.get_path_for_frame(item.properties.publish_path, "*")
         else:
-            path = item.properties.path
+            path = item.properties.get("path")
             publish_path = item.properties.publish_path
 
         # ---- check if its an in place publish
