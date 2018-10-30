@@ -546,7 +546,7 @@ class PublishPlugin(PluginBase):
         :param settings: Dictionary of settings
         :param item: Item to analyze
         """
-        with self._handle_plugin_error("Publish complete!", "Error publishing: %s"):
+        with self._handle_plugin_error("Publish %s complete!" % item.name, "Error publishing: %s"):
             self._hook_instance.publish(task_settings, item)
 
     def run_finalize(self, task_settings, item):
@@ -556,7 +556,7 @@ class PublishPlugin(PluginBase):
         :param settings: Dictionary of settings
         :param item: Item to analyze
         """
-        with self._handle_plugin_error("Finalize complete!", "Error finalizing: %s"):
+        with self._handle_plugin_error("Finalize %s complete!" % item.name, "Error finalizing: %s"):
             self._hook_instance.finalize(task_settings, item)
 
 
