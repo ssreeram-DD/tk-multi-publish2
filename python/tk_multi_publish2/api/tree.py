@@ -170,6 +170,9 @@ class PublishTree(object):
             "__root__",
             "__root__",
             "__root__",
+            None,
+            None,
+            {},
             parent=None
         )
 

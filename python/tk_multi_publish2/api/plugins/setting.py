@@ -51,7 +51,7 @@ class PluginSetting(PublishData):
         return str(self.value)
 
 
-def get_plugin_setting(settings_key, context=None, plugin_schema=None, validate=False):
+def get_plugin_setting(settings_key, context=None, plugin_schema={}, validate=False):
     """
     """
     # the current bundle (the publisher instance)
@@ -120,7 +120,7 @@ def get_plugin_setting(settings_key, context=None, plugin_schema=None, validate=
     schema.update(plugin_schema)
 
     # Resolve the setting value, this also implicitly validates the value
-    plugin_setting = sgtk.platform.resolve_setting_value(
+    plugin_setting = sgtk.platform.bundle.resolve_setting_value(
                           app_obj.sgtk,
                           app_obj.engine.name,
                           schema[settings_key],

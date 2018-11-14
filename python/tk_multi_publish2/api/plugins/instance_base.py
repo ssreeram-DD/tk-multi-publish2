@@ -24,21 +24,23 @@ class PluginInstanceBase(object):
     Each object reflects an instance in the app configuration.
     """
 
-    def __init__(self, path, context, publish_logger):
+    def __init__(self, path, context, publish_manager):
         """
         Initialize a plugin instance.
 
         :param path: Path to the collector hook
         :param context: The Context to use to resolve this plugin's settings
-        :param publish_logger: a logger object that will be used by the hook
+        :param publish_manager: The PublishManager object that generated this plugin instance.
         """
 
         super(PluginInstanceBase, self).__init__()
 
-        if not publish_logger:
-            publish_logger = logger
+        self._manager = publish_manager
 
-        self._logger = publish_logger
+        if self._manager.logger:
+            self._logger = self._manager.logger
+        else:
+            self._logger = logger
 
         # all plugins need a hook and a name
         self._path = path
@@ -128,14 +130,6 @@ class PluginInstanceBase(object):
         return self._configured_settings
 
     @property
-    def settings_schema(self):
-        """
-        A dictionary of settings schema data as originally specified for this plugin
-        instance in the pipeline configuration.
-        """
-        return self._settings_schema
-
-    @property
     def logger(self):
         """
         The logger used by this plugin instance.
@@ -148,6 +142,13 @@ class PluginInstanceBase(object):
         self._logger = new_logger
 
     @property
+    def manager(self):
+        """
+        The publish manager that generated this plugin instance.
+        """
+        return self._manager
+
+    @property
     def path(self):
         """The path to this plugin as specified in the pipeline config."""
         return self._path
@@ -158,3 +159,11 @@ class PluginInstanceBase(object):
         A dict of resolved raw settings given the current state
         """
         return self._settings
+
+    @property
+    def settings_schema(self):
+        """
+        A dictionary of settings schema data as originally specified for this plugin
+        instance in the pipeline configuration.
+        """
+        return self._settings_schema

@@ -17,9 +17,7 @@ import tempfile
 import sgtk
 
 from .data import PublishData
-from .manager import PublishManager
 from .task import PublishTask
-from .setting import *
 
 logger = sgtk.platform.get_logger(__name__)
 
@@ -364,7 +362,7 @@ class PublishItem(object):
             type_display,
             collector,
             context,
-            properties
+            properties,
             parent=self
         )
         self._children.append(child_item)
@@ -655,16 +653,16 @@ class PublishItem(object):
         """
         Update context for item, plus any associated tasks or child items
         """
-        publish_logger = self._collector.logger
+        publish_manager = self._collector.manager
 
         # Get the collector object for the new context
-        collector = PublishManager.load_collector(context, publish_logger)
+        collector = publish_manager.load_collector(context)
 
         # Update the item's properties using the new collector
         collector.run_on_context_changed(self)
 
         # Next re-initialize the item's list of tasks
-        self.refresh_tasks(context, publish_logger)
+        self.refresh_tasks(context, publish_manager)
 
         # Now traverse down the hierarchy and apply to all children
         for child in self.children:
@@ -673,12 +671,12 @@ class PublishItem(object):
             if not child._context:
                 child._set_context_r(context)
 
-    def refresh_tasks(self, context, publish_logger):
+    def refresh_tasks(self, context, publish_manager):
         """
         Refresh the list of tasks for this item based on the provided Context object
         """
         # Get the list of publish plugins for this context
-        context_plugins = PublishManager.load_publish_plugins(context, publish_logger)
+        context_plugins = publish_manager.load_publish_plugins(context)
         logger.debug(
             "Offering %s plugins for context: %s" % (len(context_plugins), context)
         )
