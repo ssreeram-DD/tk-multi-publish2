@@ -8,6 +8,7 @@
 # agreement to the Shotgun Pipeline Toolkit Source Code License. All rights
 # not expressly granted therein are reserved by Shotgun Software Inc.
 
+import collections
 import copy
 import sgtk
 from ..data import PublishData
@@ -60,7 +61,7 @@ def get_plugin_setting(settings_key, context=None, plugin_schema={}, validate=Fa
     # Set the context if not specified
     context = context or app.context
 
-    logger.debug("Finding plugin settings for context: %s" % (context,))
+    logger.debug("Finding plugin setting '%s' for context: %s" % (settings_key, context))
 
     if context == app.context:
         # if the context matches the bundle, we don't need to do any extra
@@ -116,8 +117,8 @@ def get_plugin_setting(settings_key, context=None, plugin_schema={}, validate=Fa
                 context)
 
     # Inject the plugin's schema for proper settings resolution
-    schema = copy.deepcopy(app_obj.descriptor.configuration_schema)        
-    schema.update(plugin_schema)
+    schema = copy.deepcopy(app_obj.descriptor.configuration_schema)
+    dict_merge(schema, plugin_schema)
 
     # Resolve the setting value, this also implicitly validates the value
     plugin_setting = sgtk.platform.bundle.resolve_setting_value(
@@ -134,3 +135,19 @@ def get_plugin_setting(settings_key, context=None, plugin_schema={}, validate=Fa
         logger.debug("Could not find setting '%s' for context: %s" % (settings_key, context))
 
     return plugin_setting
+
+def dict_merge(dct, merge_dct):
+    """ Recursive dict merge. Inspired by :meth:``dict.update()``, instead of
+    updating only top-level keys, dict_merge recurses down into dicts nested
+    to an arbitrary depth, updating keys. The ``merge_dct`` is merged into
+    ``dct``.
+    :param dct: dict onto which the merge is executed
+    :param merge_dct: dct merged into dct
+    :return: None
+    """
+    for k, v in merge_dct.iteritems():
+        if (k in dct and isinstance(dct[k], dict)
+                and isinstance(merge_dct[k], collections.Mapping)):
+            dict_merge(dct[k], merge_dct[k])
+        else:
+            dct[k] = merge_dct[k]

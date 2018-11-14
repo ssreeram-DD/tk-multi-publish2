@@ -8,8 +8,6 @@
 # agreement to the Shotgun Pipeline Toolkit Source Code License. All rights
 # not expressly granted therein are reserved by Shotgun Software Inc.
 
-import fnmatch
-
 import sgtk
 
 from .tree import PublishTree
@@ -526,7 +524,7 @@ class PublishManager(object):
             logger.debug("Created publish plugin: %s" % (plugin_instance,))
 
         # ensure the plugins are cached
-        self._plugins_cache.add(self.CONFIG_PLUGIN_DEFINITION, context, plugins)
+        self._plugins_cache.add(self.CONFIG_PLUGIN_DEFINITIONS, context, plugins)
 
         return plugins
 

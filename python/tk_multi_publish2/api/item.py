@@ -9,7 +9,7 @@
 # not expressly granted therein are reserved by Shotgun Software Inc.
 
 from collections import defaultdict
-
+import fnmatch
 import inspect
 import os
 import tempfile
