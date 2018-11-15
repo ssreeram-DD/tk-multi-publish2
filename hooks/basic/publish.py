@@ -748,7 +748,7 @@ class PublishPlugin(HookBaseClass):
         Extracts the publish version from the item's "version" field
         """
         # Return none if this is the root item
-        if item.is_root():
+        if item.is_root:
             return None
 
         # First see if we can get the publish version from the parent

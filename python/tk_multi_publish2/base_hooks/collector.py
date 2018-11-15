@@ -13,7 +13,7 @@ import sgtk
 
 from .base import PluginBase
 
-class CollectorPluginBase(PluginBase):
+class CollectorPlugin(PluginBase):
     """
     This class defines the required interface for a collector plugin.
     Collectors are used to gather individual files that are loaded via the
