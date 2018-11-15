@@ -11,6 +11,7 @@
 import sgtk
 import os
 
+from .api import PublishManager
 from . import base_hooks
 from . import util
 

@@ -17,7 +17,7 @@ from sgtk.util import filesystem
 
 from .base import PluginBase
 
-class PublishPluginBase(PluginBase):
+class PublishPlugin(PluginBase):
     """
     This class defines the required interface for a publish plugin. Publish
     plugins are responsible for operating on items collected by the collector
@@ -27,6 +27,20 @@ class PublishPluginBase(PluginBase):
 
     ############################################################################
     # Plugin properties
+
+    @property
+    def id(self):
+        """
+        Unique string identifying this plugin.
+        """
+        return self._id
+
+    @id.setter
+    def id(self, new_id):
+        """
+        Allows to set the unique string identifying this plugin.
+        """
+        self._id = new_id
 
     @property
     def icon(self):
@@ -217,7 +231,7 @@ class PublishPluginBase(PluginBase):
         plugin is interested in.
 
         As items are collected by the collector hook, they are given an item
-        type string (see :meth:`~.processing.Item.create_item`). The strings
+        type string (see :meth:`~.api.PublishItem.create_item`). The strings
         provided by this property will be compared to each collected item's
         type.
 
@@ -236,11 +250,10 @@ class PublishPluginBase(PluginBase):
 
     def init_task_settings(self, task_settings, item):
         """
-        Method called by the publisher to determine the initial settings for the
-        instantiated task.
+        Method called by the publisher to allow modifications to the initial task settings.
 
-        :param task_settings: Instance of the plugin settings specific for this item
-        :param item: Item to process
+        :param task_settings: Instance of the plugin settings specific for this item/task
+        :param item: The parent item of the task
         :returns: dictionary of settings for this item's task
         """
         # Return the item-type specific settings
@@ -256,7 +269,7 @@ class PublishPluginBase(PluginBase):
                     }
                 }
             )
-            return None
+            return {}
         return task_settings["Item Type Settings"].value.get(item.type)
 
     def accept(self, task_settings, item):
@@ -320,8 +333,8 @@ class PublishPluginBase(PluginBase):
 
         :param dict task_settings: The keys are strings, matching the keys returned
             in the :data:`settings` property. The values are
-            :class:`~.processing.Setting` instances.
-        :param item: The :class:`~.processing.Item` instance to process for
+            :ref:`publish-api-setting` instances.
+        :param item: The :ref:`publish-api-item` instance to process for
             acceptance.
 
         :returns: dictionary with boolean keys accepted, required and enabled
@@ -373,8 +386,8 @@ class PublishPluginBase(PluginBase):
 
         :param dict task_settings: The keys are strings, matching the keys returned
             in the :data:`settings` property. The values are
-            :class:`~.processing.Setting` instances.
-        :param item: The :class:`~.processing.Item` instance to validate.
+            :ref:`publish-api-setting` instances.
+        :param item: The :ref:`publish-api-item` instance to validate.
 
         :returns: True if item is valid, False otherwise.
         """
@@ -422,8 +435,8 @@ class PublishPluginBase(PluginBase):
 
         :param dict task_settings: The keys are strings, matching the keys returned
             in the :data:`settings` property. The values are
-            :class:`~.processing.Setting` instances.
-        :param item: The :class:`~.processing.Item` instance to validate.
+            :ref:`publish-api-setting` instances.
+        :param item: The :ref:`publish-api-item` instance to publish.
         """
         raise NotImplementedError
 
@@ -454,8 +467,8 @@ class PublishPluginBase(PluginBase):
 
         :param dict task_settings: The keys are strings, matching the keys returned
             in the :data:`settings` property. The values are
-            :class:`~.processing.Setting` instances.
-        :param item: The :class:`~.processing.Item` instance to validate.
+            :ref:`publish-api-setting` instances.
+        :param item: The :ref:`publish-api-item` instance to finalize.
         """
         raise NotImplementedError
 
@@ -513,8 +526,8 @@ class PublishPluginBase(PluginBase):
 
         :param dict task_settings: The keys are strings, matching the keys returned
             in the :data:`settings` property. The values are
-            :class:`~.processing.Setting` instances.
-        :param item: The :class:`~.processing.Item` instance to validate.
+            :ref:`publish-api-setting` instances.
+        :param item: The :ref:`publish-api-item` instance to undo.
         """
         raise NotImplementedError
 
@@ -538,7 +551,7 @@ class PublishPluginBase(PluginBase):
         """
 
         # defer Qt-related imports
-        from sgtk.platform.qt import QtCore, QtGui
+        from sgtk.platform.qt import QtGui
 
         # create a group box to display the description
         description_group_box = QtGui.QGroupBox(parent)
@@ -619,7 +632,7 @@ class PublishPluginBase(PluginBase):
         When invoked with multiple settings dictionaries, it is the
         responsibility of the custom UI to decide how to display the
         information. If you do not wish to implement the editing of multiple
-        tasks at the same time, you can raise a `NotImplementedError` when
+        tasks at the same time, you can raise a ``NotImplementedError`` when
         there is more than one item in the list and the publisher will inform
         the user than only one task of that type can be edited at a time.
 
