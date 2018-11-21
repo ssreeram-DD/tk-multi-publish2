@@ -188,8 +188,7 @@ class PublishPluginInstance(PluginInstanceBase):
                 "Error running init_task_settings for %s" % self,
                 extra = _get_error_extra_info(error_msg)
             )
-            # by default, just use the plugin settings
-            task_settings = self._settings
+            task_settings = {}
         finally:
             if not sgtk.platform.current_engine().has_ui:
                 from sgtk.platform.qt import QtCore
