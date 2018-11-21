@@ -164,3 +164,13 @@ class PluginInstanceBase(object):
         instance in the pipeline configuration.
         """
         return self._settings_schema
+
+    def get_settings_for_context(self, context=None):
+        """
+        Find and resolve settings for the plugin in the specified context
+
+        :param context: Context in which to look for settings.
+
+        :returns: The plugin settings for the given context or None.
+        """
+        raise NotImplementedError
